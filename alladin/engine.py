@@ -208,7 +208,7 @@ class Service:
         # Per-mint marks: a scalar price would misprice positions of other mints.
         price = marks if marks else 0
         client_calls = getattr(getattr(self.council,'client',None),'calls',0)
-        return dict(chain=self.cfg.chain,venue='solana_dex',execution=self.cfg.execution,asset=f'{self.cfg.mint}/USDC',agent_mode=self.council.mode,
+        return dict(chain=self.cfg.chain,venue='coinbase_advanced',execution=self.cfg.execution,asset=f'{self.cfg.mint}/USDC',agent_mode=self.council.mode,
                     bars_processed=state['bars_processed'],last_timestamp=state['last_timestamp'],
                     equity_usdc=book.equity(price),cash_usdc=book.cash,
                     gross_usdc=book.gross(price),net_usdc=book.net(price),

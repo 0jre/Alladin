@@ -51,7 +51,7 @@ class MCPTests(unittest.TestCase):
         reply = read_message(outgoing)
         self.assertEqual(reply['id'], 7)
         status = json.loads(reply['result']['content'][0]['text'])
-        self.assertEqual(status['venue'], 'solana_dex')
+        self.assertEqual(status['venue'], 'coinbase_advanced')
         self.assertIsNone(read_message(outgoing))
 
     def test_unknown_tool_is_a_tool_error(self):

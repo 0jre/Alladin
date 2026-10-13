@@ -306,7 +306,7 @@ class HTTPTests(unittest.TestCase):
         with self.request('/health',auth=False) as r:
             body=json.load(r)
             self.assertEqual(body['execution'],'paper')
-        self.assertEqual(body['venue'],'solana_dex')
+        self.assertEqual(body['venue'],'coinbase_advanced')
         with self.request('/v1/contract') as r:self.assertIn('ingest',json.load(r)['commands'])
     def test_unknown_command_not_shell(self):
         with self.assertRaises(urllib.error.HTTPError) as e:

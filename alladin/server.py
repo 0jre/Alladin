@@ -9,7 +9,7 @@ from .dispatch import execute
 from .transport import DataError
 
 CONTRACT = {
-    'version':'0.6','venue':'solana_dex','chain':'solana','execution':'paper',
+    'version':'0.6','venue':'coinbase_advanced','chain':'solana','execution':'paper',
     'endpoints':{'GET /health':'process health; no portfolio data',
                  'GET /v1/status':'persistent portfolio state',
                  'GET /v1/audit?limit=100':'decision and execution events',
@@ -17,7 +17,7 @@ CONTRACT = {
                  'GET /v1/audit/verify':'verify event hash chain',
                  'POST /v1/commands':'{command,args}; Bearer token + Idempotency-Key'},
     'commands':{
-        'paper_tick':{'args':[],'result':'read-only Solana pool/RPC data -> forward-only warmup or spot paper cycle; never signs or sends'},
+        'paper_tick':{'args':[],'result':'read-only Coinbase SOL-USDC market data plus Solana RPC -> forward-only warmup or spot paper cycle; never signs or sends'},
         'ingest':{'args':['candle','snapshot'],'result':'closed bar -> agents -> risk -> pending paper action'},
         'analyze':{'args':[],'result':'analysis of stored data; does not schedule a trade'},
         'evaluate':{'args':['proposal'],'result':'risk approval only; does not execute'},
@@ -62,7 +62,7 @@ def build_server(service,port=8080,token=None):
             self.connection.settimeout(15)
             parsed = urlsplit(self.path)
             if parsed.path == '/health':
-                return self.send_json(200,{'status':'ok','venue':'solana_dex','chain':service.cfg.chain,'execution':service.cfg.execution})
+                return self.send_json(200,{'status':'ok','venue':'coinbase_advanced','chain':service.cfg.chain,'execution':service.cfg.execution})
             if not self.authenticated():
                 return
             try:

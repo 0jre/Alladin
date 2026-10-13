@@ -6,13 +6,31 @@ from pathlib import Path
 from unittest.mock import patch
 
 from alladin.engine import Service
-from alladin.models import Candle, Config, Proposal, Snapshot, SOL
-from alladin.providers import CoinbaseMarket
+from alladin.models import Candle, Config, Proposal, Snapshot, SOL, TOKEN_PROGRAM, MAINNET_GENESIS
+from alladin.providers import CoinbaseMarket, SolanaRPC
 from alladin.risk import security_checks
 from alladin.transport import DataError
 
 
 class ProviderTests(unittest.TestCase):
+    def test_native_sol_rpc_skips_irrelevant_holder_concentration_calls(self):
+        class RPC(SolanaRPC):
+            def __init__(self):
+                self.methods=[]
+            def call(self,method,params=None):
+                self.methods.append(method)
+                if method=='getGenesisHash':return MAINNET_GENESIS
+                if method=='getAccountInfo':
+                    return {'value':{'owner':TOKEN_PROGRAM,'data':{'parsed':{'type':'mint','info':{
+                        'isInitialized':True,'mintAuthority':None,'freezeAuthority':None}}}},
+                        'context':{'slot':123}}
+                raise AssertionError(f'unexpected RPC call: {method}')
+        rpc=RPC()
+        result=rpc.inspect(SOL)
+        self.assertEqual(rpc.methods,['getGenesisHash','getAccountInfo'])
+        self.assertIsNone(result['top10_account_share'])
+        self.assertEqual(result['slot'],123)
+
     def test_coinbase_product_is_fixed_to_usdc_quoted_sol(self):
         with self.assertRaises(ValueError):
             CoinbaseMarket(product_id='SOL-USD')
@@ -42,18 +60,20 @@ class ProviderTests(unittest.TestCase):
     def test_coinbase_market_uses_public_book_depth_and_taker_imbalance(self):
         class Http:
             def json(self,url,**kwargs):
-                if url.endswith('/products/SOL-USDC'):
-                    return {'product_id':'SOL-USDC','base_currency_id':'SOL','quote_currency_id':'USDC',
-                            'volume_24h':'100','price':'150','is_disabled':False}
                 if '/product_book?' in url:
                     return {'pricebook':{'bids':[{'price':'149.9','size':'10'}],
                                          'asks':[{'price':'150.1','size':'10'}]}}
                 return {'trades':[{'price':'150','size':'2','side':'SELL'},
                                   {'price':'150','size':'1','side':'BUY'}]}
-        data=CoinbaseMarket(Http()).market(SOL)
+        now=int(time.time())
+        start=now-86400
+        candles=[Candle(start+i*900,150,151,149,150,10) for i in range(97)]
+        with patch('alladin.providers.time.time',return_value=now):
+            data=CoinbaseMarket(Http()).market(SOL,candles=candles,timeframe_seconds=900)
         self.assertEqual(data['price'],150)
         self.assertAlmostEqual(data['buy_sell_imbalance'],1/3)
         self.assertEqual(data['liquidity_usd'],3000)
+        self.assertEqual(data['volume_24h_usd'],970)
         self.assertEqual(data['source'],'coinbase_advanced_sol_spot')
 
     def test_perp_not_approved_without_verified_market(self):

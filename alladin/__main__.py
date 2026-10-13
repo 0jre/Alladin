@@ -88,7 +88,7 @@ def main():
                 return 0
             if args.command == 'serve':
                 server = build_server(service,args.port)
-                print(json.dumps(dict(status='listening',host='127.0.0.1',port=server.server_port,venue='solana_dex',chain=cfg.chain,execution=cfg.execution)),flush=True)
+                print(json.dumps(dict(status='listening',host='127.0.0.1',port=server.server_port,venue='coinbase_advanced',chain=cfg.chain,execution=cfg.execution)),flush=True)
                 try:
                     server.serve_forever()
                 except KeyboardInterrupt:

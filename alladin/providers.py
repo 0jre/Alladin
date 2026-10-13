@@ -40,11 +40,15 @@ class SolanaRPC:
             raise DataError("Conta não é um mint inicializado")
         if "mintAuthority" not in info or "freezeAuthority" not in info:
             raise DataError("Autoridades não informadas")
-        supply = self.call("getTokenSupply", [mint, {"commitment": "finalized"}])
-        largest = self.call("getTokenLargestAccounts", [mint, {"commitment": "finalized"}])
-        total = int(supply["value"]["amount"])
-        share = None if mint == SOL or total == 0 else min(
-            1, sum(int(row["amount"]) for row in largest["value"][:10]) / total)
+        if mint == SOL:
+            # Concentration of wrapped SOL holders is not a useful mint safety signal.
+            share = None
+        else:
+            supply = self.call("getTokenSupply", [mint, {"commitment": "finalized"}])
+            largest = self.call("getTokenLargestAccounts", [mint, {"commitment": "finalized"}])
+            total = int(supply["value"]["amount"])
+            share = None if total == 0 else min(
+                1, sum(int(row["amount"]) for row in largest["value"][:10]) / total)
         return dict(mint=mint, token_program=value["owner"],
                     mint_authority=info["mintAuthority"], freeze_authority=info["freezeAuthority"],
                     top10_account_share=share, account_checked=True, cluster_verified=True,
@@ -56,7 +60,8 @@ class CoinbaseMarket:
     """Coinbase Advanced Trade public spot data, restricted to Solana's native SOL mint."""
     BASE = "https://api.coinbase.com/api/v3/brokerage/market"
     PRODUCT_IDS = {"SOL-USDC"}
-    GRANULARITIES = {60: "ONE_MINUTE", 300: "FIVE_MINUTE", 900: "FIFTEEN_MINUTE"}
+    GRANULARITIES = {60: "ONE_MINUTE", 300: "FIVE_MINUTE", 900: "FIFTEEN_MINUTE",
+                     3600: "ONE_HOUR"}
 
     def __init__(self, http=None, product_id=None):
         self.http = http or HTTP(timeout=8, retries=0)
@@ -73,10 +78,10 @@ class CoinbaseMarket:
     def candles(self, mint=SOL, count=120, aggregate=900, now=None):
         if pubkey(mint) != SOL:
             raise DataError("Coinbase feed habilitado somente para o mint nativo SOL")
-        if type(count) is not int or not 80 <= count <= 348:
-            raise ValueError("count precisa estar entre 80 e 348")
+        if type(count) is not int or not 1 <= count <= 348:
+            raise ValueError("count precisa estar entre 1 e 348")
         if aggregate not in self.GRANULARITIES:
-            raise ValueError("aggregate precisa ser 1, 5 ou 15 minutos")
+            raise ValueError("aggregate precisa ser 1, 5, 15 ou 60 minutos")
         step = aggregate
         cutoff = int(time.time() if now is None else now)
         end = cutoff // step * step
@@ -112,14 +117,6 @@ class CoinbaseMarket:
     def market(self, mint=SOL, candles=None, timeframe_seconds=900):
         if pubkey(mint) != SOL:
             raise DataError("Coinbase market data habilitado somente para o mint nativo SOL")
-        product = self._get(f"products/{quote(self.product_id, safe='')}")
-        if not isinstance(product, dict) or product.get("product_id") != self.product_id:
-            raise DataError("Produto Coinbase inválido")
-        if product.get("base_currency_id") != "SOL" or product.get("quote_currency_id") != "USDC":
-            raise DataError("Produto Coinbase não representa SOL contra USDC")
-        if product.get("is_disabled") is True or product.get("trading_disabled") is True:
-            raise DataError("Produto Coinbase desabilitado")
-
         book = self._get("product_book", {"product_id": self.product_id, "limit": 50})
         try:
             pricebook = book["pricebook"]
@@ -154,21 +151,14 @@ class CoinbaseMarket:
             raise DataError("Trade Coinbase inválido") from None
         imbalance = ((buy_notional - sell_notional) / (buy_notional + sell_notional)
                      if buy_notional + sell_notional else 0.0)
-        try:
-            volume_base = float(product["volume_24h"])
-            product_price = float(product.get("price", mid))
-        except (KeyError, TypeError, ValueError, OverflowError):
-            raise DataError("Volume/preço Coinbase inválido") from None
-        if min(volume_base, product_price) < 0 or product_price == 0:
-            raise DataError("Volume/preço Coinbase inválido")
-        # Coinbase volume_24h is base-asset volume; convert to quote notional.
-        volume_quote = volume_base * product_price
-        if (candles and timeframe_seconds <= 900
-                and len(candles) >= 86400 // timeframe_seconds):
-            # Prefer exact quote notional only when the supplied bars cover a full day.
-            day_ago = int(time.time()) - 86400
-            if candles[0].timestamp <= day_ago:
-                volume_quote = sum(bar.volume for bar in candles if bar.timestamp >= day_ago)
+        day_ago = int(time.time()) - 86400
+        volume_bars = candles or []
+        if not volume_bars or volume_bars[0].timestamp > day_ago:
+            # Short trading intervals do not span a day; fetch hourly SOL-USDC candles for volume.
+            volume_bars = self.candles(mint, count=26, aggregate=3600)
+        if volume_bars[0].timestamp > day_ago:
+            raise DataError("Candles Coinbase insuficientes para medir o volume de 24 horas")
+        volume_quote = sum(bar.volume for bar in volume_bars if bar.timestamp >= day_ago)
         return dict(mint=mint, product_id=self.product_id, price=mid,
                     bid=best_bid, ask=best_ask,
                     liquidity_usd=bid_depth + ask_depth, volume_24h_usd=volume_quote,
