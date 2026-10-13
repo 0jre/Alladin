@@ -13,6 +13,10 @@ from alladin.transport import DataError
 
 
 class ProviderTests(unittest.TestCase):
+    def test_coinbase_product_is_fixed_to_usdc_quoted_sol(self):
+        with self.assertRaises(ValueError):
+            CoinbaseMarket(product_id='SOL-USD')
+
     def test_coinbase_filters_open_bar_and_rejects_gaps(self):
         now=1800000000
         class Http:

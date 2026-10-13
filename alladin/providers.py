@@ -55,14 +55,14 @@ class SolanaRPC:
 class CoinbaseMarket:
     """Coinbase Advanced Trade public spot data, restricted to Solana's native SOL mint."""
     BASE = "https://api.coinbase.com/api/v3/brokerage/market"
-    PRODUCT_IDS = {"SOL-USD", "SOL-USDC"}
+    PRODUCT_IDS = {"SOL-USDC"}
     GRANULARITIES = {60: "ONE_MINUTE", 300: "FIVE_MINUTE", 900: "FIFTEEN_MINUTE"}
 
     def __init__(self, http=None, product_id=None):
         self.http = http or HTTP(timeout=8, retries=0)
-        self.product_id = product_id or os.environ.get("COINBASE_PRODUCT_ID", "SOL-USDC")
+        self.product_id = product_id or "SOL-USDC"
         if self.product_id not in self.PRODUCT_IDS:
-            raise ValueError("COINBASE_PRODUCT_ID deve ser SOL-USDC ou SOL-USD")
+            raise ValueError("Somente o produto Coinbase SOL-USDC é permitido")
 
     def _get(self, path, params=None):
         url = f"{self.BASE}/{path}"
@@ -73,8 +73,8 @@ class CoinbaseMarket:
     def candles(self, mint=SOL, count=120, aggregate=900, now=None):
         if pubkey(mint) != SOL:
             raise DataError("Coinbase feed habilitado somente para o mint nativo SOL")
-        if type(count) is not int or not 80 <= count <= 350:
-            raise ValueError("count precisa estar entre 80 e 350")
+        if type(count) is not int or not 80 <= count <= 348:
+            raise ValueError("count precisa estar entre 80 e 348")
         if aggregate not in self.GRANULARITIES:
             raise ValueError("aggregate precisa ser 1, 5 ou 15 minutos")
         step = aggregate
@@ -115,8 +115,8 @@ class CoinbaseMarket:
         product = self._get(f"products/{quote(self.product_id, safe='')}")
         if not isinstance(product, dict) or product.get("product_id") != self.product_id:
             raise DataError("Produto Coinbase inválido")
-        if product.get("base_currency_id") not in {None, "SOL"} or product.get("quote_currency_id") not in {None, "USD", "USDC"}:
-            raise DataError("Produto Coinbase não representa SOL contra USD/USDC")
+        if product.get("base_currency_id") != "SOL" or product.get("quote_currency_id") != "USDC":
+            raise DataError("Produto Coinbase não representa SOL contra USDC")
         if product.get("is_disabled") is True or product.get("trading_disabled") is True:
             raise DataError("Produto Coinbase desabilitado")
 

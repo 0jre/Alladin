@@ -4,7 +4,7 @@ Backend Python de pesquisa e paper trading **exclusivamente na Solana mainnet**,
 
 ## O que significa paper-live
 
-`paper-live` usa candles fechados, livro, trades recentes e volume de 24 horas do mercado spot SOL-USDC da Coinbase Advanced Trade. O par pode ser definido como `SOL-USD` por `COINBASE_PRODUCT_ID`. O RPC Solana é usado apenas para confirmar mainnet e dados do mint. O primeiro comando só aquece os indicadores; os próximos processam cada barra fechada uma vez. Barras faltantes, feed atrasado, snapshot stale ou erro de provedor interrompem o ciclo sem preencher retroativamente. A negociação acompanha o ativo SOL da Solana, enquanto os preços refletem o mercado centralizado da Coinbase.
+`paper-live` usa candles fechados, livro, trades recentes e volume de 24 horas do mercado spot SOL-USDC da Coinbase Advanced Trade. O RPC Solana é usado apenas para confirmar mainnet e dados do mint. O primeiro comando só aquece os indicadores; os próximos processam cada barra fechada uma vez. Barras faltantes, feed atrasado, snapshot stale ou erro de provedor interrompem o ciclo sem preencher retroativamente. A negociação acompanha o ativo SOL da Solana, enquanto os preços refletem o mercado centralizado da Coinbase.
 
 O motor quantitativo ou o conselho LLM usa os mesmos sinais, filtros e limites de risco configurados para o fluxo paper do Alladin. O saldo inicial padrão é **20 USDC**. As entradas e saídas são registradas localmente contra o midpoint atual da Coinbase, somando as taxas/slippage configuradas. Isso não é uma ordem Coinbase, uma cotação executável nem garantia de que um fill real teria esse preço. Não use os resultados como evidência de rentabilidade.
 

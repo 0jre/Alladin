@@ -4,7 +4,7 @@ Alladin é um backend Python de análise e paper trading para Solana mainnet. O 
 
 ## Caminho de mercado paper
 
-1. `CoinbaseMarket` coleta candles fechados do produto SOL-USDC/SOL-USD, o livro, trades recentes e volume de 24 horas pelos endpoints públicos Coinbase Advanced Trade.
+1. `CoinbaseMarket` coleta candles fechados do produto SOL-USDC, o livro, trades recentes e volume de 24 horas pelos endpoints públicos Coinbase Advanced Trade.
 2. O provedor recusa candles abertos, lacunas, produtos que não sejam SOL e snapshots sem bid/ask ou dados de trade válidos.
 3. `SolanaRPC` verifica mainnet e os dados SPL do mint por métodos de leitura.
 4. O motor calcula features e estratégias, o conselho escolhe LONG/HOLD/CLOSE e o risco determina se há aprovação e tamanho.
