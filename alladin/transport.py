@@ -21,7 +21,7 @@ class HTTP:
             raise DataError('Endpoint HTTPS obrigatório, sem credenciais na URL')
         body = None if payload is None else json.dumps(payload,allow_nan=False).encode()
         request = urllib.request.Request(url, data=body,
-                    headers={'Content-Type':'application/json','User-Agent':'Alladin/0.5',**(headers or {})})
+                    headers={'Content-Type':'application/json','User-Agent':'Alladin/0.6',**(headers or {})})
         return self._read(request, retry)
 
     def form(self, url, fields, headers=None, retry=False):
@@ -33,7 +33,7 @@ class HTTP:
         body = urlencode({k: v for k, v in fields.items()}).encode()
         request = urllib.request.Request(url, data=body, headers={
             'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': 'Alladin/0.5', **(headers or {})})
+            'User-Agent': 'Alladin/0.6', **(headers or {})})
         return self._read(request, retry)
 
     def _read(self, request, retry):

@@ -1,25 +1,24 @@
 import hashlib
 import time
 from dataclasses import asdict, replace
-from .models import Candle, Snapshot, Proposal, Portfolio, finite
+from .models import Candle, Snapshot, Proposal, Portfolio
 from .features import features
 from .agents import Council
 from .risk import approve, update_breakers, Approval
 from .broker import PaperBroker
 from .storage import Store, canonical
 from .universe import seed_primary, classify_snapshot
-from .signer import IsolatedSigner
+from .providers import DexScreener, GeckoTerminal, collect
 
 class Service:
     """One persistent state machine, serialized by SQLite write transactions."""
-    def __init__(self,cfg,db_path,agent_mode='rules',model=None,max_llm_calls=200,council=None,quoter=None,signer=None):
+    def __init__(self,cfg,db_path,agent_mode='rules',model=None,max_llm_calls=200,council=None):
         self.cfg,self.store = cfg,Store(db_path)
         self.council = council or Council(agent_mode,model,max_llm_calls)
-        self.quoter, self.signer = quoter, signer
         self.fingerprint = hashlib.sha256(canonical(asdict(cfg)).encode()).hexdigest()
     def _ensure(self,state):
         for key,default in [('series',{}),('pending_book',{}),('blocked_mints',{}),
-                            ('universe',{}),('memory',[]),('shadow_gaps',[]),
+                            ('universe',{}),('memory',[]),
                             ('curve',[]),('history',[]),('llm_calls',0),
                             ('bars_processed',0),('pending',None),('snapshot',None),
                             ('last_timestamp',None),('last_digest',None),
@@ -54,45 +53,12 @@ class Service:
             if isinstance(e,dict) and e.get('event') == 'CLOSE':
                 state['memory'].append(dict(mint=e.get('mint'),side=e.get('side'),net_pnl=e.get('net_pnl'),reason=e.get('reason')))
         state['memory'] = state['memory'][-20:]
-    def _shadow_reason(self,state,mint,price):
-        if self.cfg.execution != 'shadow':
-            return None
-        if self.quoter is None:
-            return 'shadow_quote_unavailable'
-        try:
-            quoted = finite(self.quoter(mint),'shadow_price',1e-12)
-        except Exception:
-            return 'shadow_source_down'
-        gap = abs(quoted/price-1) if price else 1
-        state['shadow_gaps'] = (state.get('shadow_gaps',[])+[dict(mint=mint,quoted=quoted,mark=price,gap=gap)])[-200:]
-        if gap > self.cfg.max_entry_gap_fraction:
-            return 'shadow_price_divergence'
-        return None
-    def _apply_shadow(self,state,p,a,price):
-        reason = self._shadow_reason(state,p.mint,price)
-        if reason and p.action in {'LONG','SHORT'}:
-            return Approval(False,tuple(a.reasons)+(reason,))
-        return a
     def _execute_entry(self,broker,p,a,price,ts,state):
-        if self.cfg.execution != 'live':
-            return broker.open(p,a,price,ts)
-        mint = p.mint
-        if mint in state['blocked_mints']:
-            return dict(event='ENTRY_BLOCKED',mint=mint,reason='mint_blocked_after_unknown_submit')
-        if mint not in set(self.cfg.live_allowlist) or a.notional > self.cfg.live_notional_cap:
-            return dict(event='ENTRY_BLOCKED',mint=mint,reason='live_policy')
-        if not isinstance(self.signer,IsolatedSigner):
-            return dict(event='ENTRY_BLOCKED',mint=mint,reason='signer_not_configured')
-        result = self.signer.execute(dict(mint=mint,side=p.action,notional=a.notional,price=price,simulated=True,market=p.market))
-        if result['status'] == 'confirmed':
-            event = broker.open(p,a,result.get('price') or price,ts)
-            event['signature'] = result.get('signature')
-            event['execution'] = 'live'
-            return event
-        if result['status'] == 'unknown':
-            state['blocked_mints'][mint] = ts
-            return dict(event='ENTRY_UNKNOWN',mint=mint,reason='submission_unknown_no_retry')
-        return dict(event='ENTRY_REJECTED',mint=mint,reason='submission_rejected')
+        if self.cfg.execution != 'paper':
+            raise ValueError('Alladin só permite fills paper; execução externa não existe')
+        if p.market != 'spot':
+            raise ValueError('Alladin só permite posições spot')
+        return broker.open(p,a,price,ts)
     def _flatten_known(self,broker,state,ts,reason):
         marks = {}
         if state.get('last_price') is not None:
@@ -182,7 +148,6 @@ class Service:
                 old_s = Snapshot(**slot['snapshot'])
                 old_f = features([Candle(**x) for x in slot['history']])
                 a = approve(p,old_f,old_s,book,self.cfg,b.timestamp,b.open,inst)
-                a = self._apply_shadow(state,p,a,b.open)
                 events.append(dict(event='ENTRY_RECHECK',approval=asdict(a)))
                 if a.approved:
                     events.append(self._execute_entry(broker,p,a,b.open,b.timestamp,state))
@@ -206,7 +171,7 @@ class Service:
             p,audit = replace(Proposal(thesis='Mint vigiado, ainda não negociável'),mint=b.mint),{'gate':'watched_only','mode':self.council.mode}
         else:
             p,audit = self._decide(state,f,s,book,end)
-        a = self._apply_shadow(state,p,approve(p,f,s,book,self.cfg,end,instrument=inst),b.close)
+        a = approve(p,f,s,book,self.cfg,end,instrument=inst)
         if inst['status'] == 'negotiable' and p.action in {'LONG','SHORT','CLOSE'} and a.approved and b.mint not in state['blocked_mints']:
             state['pending_book'][b.mint] = dict(proposal=asdict(p),decision_at=end)
         slot.update(snapshot=asdict(s),last_timestamp=b.timestamp,last_digest=digest,last_price=b.close,bars_processed=slot['bars_processed']+1)
@@ -243,7 +208,7 @@ class Service:
         # Per-mint marks: a scalar price would misprice positions of other mints.
         price = marks if marks else 0
         client_calls = getattr(getattr(self.council,'client',None),'calls',0)
-        return dict(chain=self.cfg.chain,venue='coinbase',execution=self.cfg.execution,asset=f'{self.cfg.mint}/USDC',agent_mode=self.council.mode,
+        return dict(chain=self.cfg.chain,venue='solana_dex',execution=self.cfg.execution,asset=f'{self.cfg.mint}/USDC',agent_mode=self.council.mode,
                     bars_processed=state['bars_processed'],last_timestamp=state['last_timestamp'],
                     equity_usdc=book.equity(price),cash_usdc=book.cash,
                     gross_usdc=book.gross(price),net_usdc=book.net(price),
@@ -259,17 +224,96 @@ class Service:
                     universe={k:v['status'] for k,v in state.get('universe',{}).items()},
                     blocked_mints=sorted(state.get('blocked_mints',{})))
     def command(self,name,args,key):
-        allowed = {'ingest','analyze','evaluate','halt','finalize','universe','admit','watch','unwatch'}
+        allowed = {'ingest','paper_tick','analyze','evaluate','halt','finalize','universe','admit','watch','unwatch'}
         if name not in allowed:
             raise ValueError('Comando desconhecido ou não permitido')
+        paper_data = self._collect_paper_data(args) if name == 'paper_tick' else None
         with self.store.transaction() as db:
             return self.store.once(db,key,dict(command=name,args=args),
-                                   lambda:self._command(db,name,args))
-    def _command(self,db,name,args):
+                                   lambda:self._command(db,name,args,paper_data))
+    def _collect_paper_data(self,args):
+        """Fetch public data before opening the SQLite write transaction."""
+        if args:
+            raise ValueError('paper_tick não aceita argumentos; coleta fontes Solana read-only')
+        if self.cfg.execution != 'paper' or self.cfg.chain != 'solana':
+            raise ValueError('paper_tick exige execução paper exclusivamente na Solana')
+        if set(self.cfg.allowed_markets) != {'spot'}:
+            raise ValueError('paper_tick exige mercado spot')
+        step = self.cfg.timeframe_seconds
+        if step % 60 or step // 60 not in {1,5,15}:
+            raise ValueError('timeframe paper deve ser 1, 5 ou 15 minutos')
+        # Read the last committed bar to avoid the RPC checks when no new candle exists.
+        with self.store.connect() as db:
+            state = self._load(db)
+        market = DexScreener().market(self.cfg.mint)
+        candles = GeckoTerminal().candles(market['pool'], count=120, aggregate=step//60)
+        snap = None
+        if state['last_timestamp'] is not None:
+            next_ts = state['last_timestamp']+step
+            has_next = any(b.timestamp == next_ts for b in candles)
+            if has_next and candles[-1].timestamp == next_ts:
+                snap = collect(self.cfg.mint,market=market)
+        return dict(market=market,candles=candles,snapshot=snap)
+    def _command(self,db,name,args,paper_data=None):
         state = self._load(db)
         book = Portfolio.restore(state['portfolio'])
         if name in {'universe','admit','watch','unwatch'}:
             return self._universe(db,state,name,args)
+        if name == 'paper_tick':
+            market = paper_data['market']
+            step = self.cfg.timeframe_seconds
+            candles = paper_data['candles']
+            if state['last_timestamp'] is None:
+                if len(candles) < self.cfg.warmup_bars:
+                    raise ValueError('OHLCV on-chain insuficiente para aquecimento')
+                history = candles[-self.cfg.warmup_bars:]
+                for left,right in zip(history,history[1:]):
+                    if right.timestamp != left.timestamp+step:
+                        raise ValueError('Lacuna no OHLCV de aquecimento')
+                if history[-1].timestamp+step > time.time()+5:
+                    raise ValueError('Última barra de aquecimento ainda está aberta')
+                state['history'] = [asdict(b) for b in history]
+                state['last_timestamp'] = history[-1].timestamp
+                state['last_price'] = history[-1].close
+                state['bars_processed'] = len(history)
+                state['last_digest'] = hashlib.sha256(canonical(state['history']).encode()).hexdigest()
+                self.store.save(db,state)
+                self.store.event(db,int(time.time()),'warmup',dict(source='geckoterminal_solana_pool',
+                                  bars=len(history),last_timestamp=history[-1].timestamp,
+                                  last_price=history[-1].close))
+                return dict(result='warmed_up',bars=len(history),last_bar=history[-1].timestamp,
+                            next_action='aguardar próxima barra fechada; nenhum trade no aquecimento')
+            next_ts = state['last_timestamp']+step
+            bar = next((b for b in candles if b.timestamp == next_ts),None)
+            if bar is None:
+                newest = candles[-1].timestamp
+                if newest <= state['last_timestamp']:
+                    return dict(result='waiting_for_closed_bar',last_bar=state['last_timestamp'])
+                raise ValueError('Feed pulou uma ou mais barras; interrompido para evitar preenchimento retroativo')
+            if candles[-1].timestamp != next_ts:
+                if book.positions or state['pending']:
+                    raise ValueError('Mais de uma barra nova com posição/ordem pendente; exige reconciliação, sem fill retroativo')
+                history = candles[-self.cfg.warmup_bars:]
+                if len(history) < self.cfg.warmup_bars or any(
+                        right.timestamp != left.timestamp+step for left,right in zip(history,history[1:])):
+                    raise ValueError('Gap no feed; candles recentes insuficientes para reaquecer com segurança')
+                state['history'] = [asdict(b) for b in history]
+                state['last_timestamp'] = history[-1].timestamp
+                state['last_price'] = history[-1].close
+                state['last_digest'] = hashlib.sha256(canonical(state['history']).encode()).hexdigest()
+                state['bars_processed'] = max(state['bars_processed'],self.cfg.warmup_bars)
+                self.store.save(db,state)
+                self.store.event(db,int(time.time()),'resync_warmup',dict(
+                    source='geckoterminal_solana_pool',bars=len(history),
+                    skipped_bars=max(0,(history[-1].timestamp-next_ts)//step+1),
+                    last_timestamp=history[-1].timestamp,reason='gap_without_open_position'))
+                return dict(result='resynchronized',bars=len(history),last_bar=history[-1].timestamp,
+                            next_action='indicadores reaquecidos; nenhum fill retroativo')
+            snap = paper_data['snapshot']
+            if snap is None:
+                raise ValueError('Snapshot Solana indisponível para a barra fechada; nada foi negociado')
+            payload = dict(candle=asdict(bar),snapshot=asdict(snap))
+            return self._paper_tick(db,state,book,bar,snap,payload)
         if name == 'ingest':
             if set(args) != {'candle','snapshot'}:
                 raise ValueError('ingest exige somente candle e snapshot')
@@ -305,7 +349,6 @@ class Service:
                     old_s = Snapshot(**state['snapshot'])
                     old_f = features([Candle(**x) for x in state['history']])
                     a = approve(p,old_f,old_s,book,self.cfg,b.timestamp,b.open,state['universe'].get(p.mint))
-                    a = self._apply_shadow(state,p,a,b.open)
                     events.append(dict(event='ENTRY_RECHECK',approval=asdict(a)))
                     if a.approved:
                         events.append(self._execute_entry(broker,p,a,b.open,b.timestamp,state))
@@ -326,7 +369,7 @@ class Service:
                 p,audit = replace(Proposal(thesis='Aquecimento obrigatório'),mint=b.mint),{'gate':'warmup','mode':self.council.mode}
             else:
                 p,audit = self._decide(state,f,s,book,end)
-            a = self._apply_shadow(state,p,approve(p,f,s,book,self.cfg,end,instrument=state['universe'].get(b.mint)),b.close)
+            a = approve(p,f,s,book,self.cfg,end,instrument=state['universe'].get(b.mint))
             if p.action in {'LONG','SHORT','CLOSE'} and a.approved:
                 state['pending'] = dict(proposal=asdict(p),decision_at=end)
             decision = dict(timestamp=end,proposal=asdict(p),approval=asdict(a),council=audit)
@@ -373,7 +416,7 @@ class Service:
         f = features([Candle(**x) for x in state['history']])
         s = Snapshot(**state['snapshot'])
         # Analysis uses the last closed bar timestamp. Live freshness status separately.
-        now = state['last_timestamp']+self.cfg.timeframe_seconds
+        now = max(state['last_timestamp']+self.cfg.timeframe_seconds,s.timestamp)
         if name == 'analyze':
             if args:
                 raise ValueError('analyze não aceita argumentos')
@@ -389,3 +432,51 @@ class Service:
                           proposal=asdict(p),execution='none',as_of=now)
         self.store.event(db,now,name,result)
         return result
+
+    def _paper_tick(self,db,state,book,b,s,payload):
+        """Forward-only spot paper cycle using current Solana pool observations."""
+        if b.mint != self.cfg.mint or s.mint != self.cfg.mint or b.chain != 'solana' or s.chain != 'solana':
+            raise ValueError('paper_tick aceita somente o mint Solana configurado')
+        if s.source != 'dexscreener_solana_pool_usdc' or not s.account_checked or not s.cluster_verified:
+            raise ValueError('Snapshot não veio de fontes Solana verificadas')
+        now = int(time.time())
+        if s.timestamp > now+5 or now-s.timestamp > self.cfg.max_snapshot_age_seconds:
+            raise ValueError('Snapshot Solana futuro ou stale')
+        if b.timestamp+self.cfg.timeframe_seconds > now+5:
+            raise ValueError('Barra OHLCV ainda aberta')
+        if state['last_timestamp'] is None or b.timestamp != state['last_timestamp']+self.cfg.timeframe_seconds:
+            raise ValueError('Barra paper fora de sequência; sem preenchimentos retroativos')
+        digest = hashlib.sha256(canonical(payload).encode()).hexdigest()
+        broker = PaperBroker(book,self.cfg)
+        events = broker.on_bar(b)
+        equity = update_breakers(book,self.cfg,s.price,s.timestamp)
+        if book.halted:
+            events.extend(broker.flatten(s.price,s.timestamp,'circuit_breaker',mint=b.mint))
+            equity = book.equity(s.price)
+        state['history'] = (state['history']+[asdict(b)])[-500:]
+        f = features([Candle(**row) for row in state['history']])
+        if f.get('ready'):
+            broker.trail(b.close,f['atr'],b.mint)
+        p,audit = self._decide(state,f,s,book,s.timestamp)
+        approval = approve(p,f,s,book,self.cfg,s.timestamp,s.price,state['universe'].get(b.mint))
+        if p.action == 'CLOSE':
+            events.extend(broker.close(pos,s.price,s.timestamp,'agent_exit')
+                          for pos in list(book.positions) if pos.market == p.market and pos.mint == b.mint)
+        elif p.action in {'LONG','SHORT'} and approval.approved and not book.halted:
+            events.append(self._execute_entry(broker,p,approval,s.price,s.timestamp,state))
+        decision = dict(timestamp=s.timestamp,mint=b.mint,proposal=asdict(p),
+                        approval=asdict(approval),council=audit,
+                        market_data=dict(source=s.source,bar_timestamp=b.timestamp,
+                                         observed_at=s.timestamp,fill_model='current_pool_mark_plus_configured_costs'))
+        state.update(portfolio=book.serialize(),snapshot=asdict(s),last_timestamp=b.timestamp,
+                     last_digest=digest,last_price=s.price,bars_processed=state['bars_processed']+1,
+                     last_decision=decision)
+        state['curve'].append(dict(timestamp=s.timestamp,equity=book.equity(s.price),price=s.price,
+                                   gross=book.gross(s.price),net=book.net(s.price)))
+        state['curve'] = state['curve'][-2000:]
+        self._remember(state,events)
+        self.store.save(db,state)
+        self.store.event(db,s.timestamp,'cycle',dict(decision=decision,events=events,
+                                                     equity=book.equity(s.price)))
+        return dict(result='processed',timestamp=b.timestamp,decision=decision,events=events,
+                    equity_usdc=book.equity(s.price))

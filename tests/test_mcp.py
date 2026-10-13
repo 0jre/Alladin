@@ -25,23 +25,18 @@ class MCPTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_initialize_lists_tools_and_calls_a_desk(self):
+    def test_initialize_lists_solana_paper_tools_only(self):
         message = frame({'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-06-18'}})
         opened = handle(self.service, message)
         self.assertEqual(opened['protocolVersion'], '2025-06-18')
         self.assertEqual(opened['serverInfo']['name'], 'alladin')
         listed = handle(self.service, {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list'})
         names = {tool['name'] for tool in listed['tools']}
-        self.assertIn('market_radar', names)
-        self.assertIn('coinbase_connect', names)
-        self.assertIn('coinbase_order', names)
-        called = handle(self.service, {'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call', 'params': {
-            'name': 'desks', 'arguments': {'desk': 'copy'}}})
-        self.assertFalse(called['isError'])
-        body = json.loads(called['content'][0]['text'])
-        self.assertIn('coinbase_order', body['task'])
+        self.assertIn('paper_tick', names)
+        self.assertNotIn('coinbase_order', names)
+        self.assertNotIn('market_radar', names)
         prompts = handle(self.service, {'jsonrpc': '2.0', 'id': 4, 'method': 'prompts/list'})
-        self.assertIn('copy', {item['name'] for item in prompts['prompts']})
+        self.assertEqual(prompts['prompts'], [])
 
     def test_stdio_loop_answers_and_ignores_notifications(self):
         incoming = io.BytesIO()
@@ -56,7 +51,7 @@ class MCPTests(unittest.TestCase):
         reply = read_message(outgoing)
         self.assertEqual(reply['id'], 7)
         status = json.loads(reply['result']['content'][0]['text'])
-        self.assertEqual(status['venue'], 'coinbase')
+        self.assertEqual(status['venue'], 'solana_dex')
         self.assertIsNone(read_message(outgoing))
 
     def test_unknown_tool_is_a_tool_error(self):

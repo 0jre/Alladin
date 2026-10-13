@@ -41,7 +41,8 @@ class ModelAndFeatureTests(unittest.TestCase):
             Config(chain='bitcoin')
         with self.assertRaises(ValueError):
             Candle(0,1,1,1,1,1,chain='bitcoin')
-        self.assertEqual(Config(chain='base').chain, 'base')
+        with self.assertRaises(ValueError):
+            Config(chain='base')
     def test_no_live_mode(self):
         with self.assertRaises(ValueError):
             Config(execution='live')
@@ -91,13 +92,13 @@ class RiskTests(unittest.TestCase):
         self.assertFalse(a.approved)
     def test_perp_missing_oracle_block(self):
         a=approve(proposal('perp'),self.f,replace(self.s,oracle_price=None),self.book,self.cfg,1000)
-        self.assertIn('missing_perp_oracle_or_funding',a.reasons)
+        self.assertIn('market_not_enabled',a.reasons)
     def test_oracle_deviation_block(self):
         a=approve(proposal('perp'),self.f,replace(self.s,oracle_price=90),self.book,self.cfg,1000)
-        self.assertIn('oracle_deviation',a.reasons)
+        self.assertIn('market_not_enabled',a.reasons)
     def test_funding_erodes_edge(self):
         a=approve(proposal('perp'),self.f,replace(self.s,expected_funding_hourly=.01),self.book,self.cfg,1000)
-        self.assertIn('funding_erodes_reward_risk',a.reasons)
+        self.assertIn('market_not_enabled',a.reasons)
     def test_short_spot_block(self):
         self.assertFalse(approve(proposal('spot','SHORT'),self.f,self.s,self.book,self.cfg,1000).approved)
     def test_halt_latches_after_day_change(self):
@@ -110,8 +111,7 @@ class RiskTests(unittest.TestCase):
         self.book.cash=8500
         self.book.positions=[Position('p','spot',1,15,100,98,106,0,0,99999,'x',0)]
         a=approve(proposal('perp'),self.f,self.s,self.book,self.cfg,1000)
-        self.assertTrue(a.approved)
-        self.assertLessEqual(a.notional,500)
+        self.assertIn('market_not_enabled',a.reasons)
     def test_gap_recheck(self):
         a=approve(proposal(),self.f,self.s,self.book,self.cfg,1000,103)
         self.assertIn('reference_price_deviation',a.reasons)
@@ -306,7 +306,7 @@ class HTTPTests(unittest.TestCase):
         with self.request('/health',auth=False) as r:
             body=json.load(r)
             self.assertEqual(body['execution'],'paper')
-            self.assertEqual(body['venue'],'coinbase')
+        self.assertEqual(body['venue'],'solana_dex')
         with self.request('/v1/contract') as r:self.assertIn('ingest',json.load(r)['commands'])
     def test_unknown_command_not_shell(self):
         with self.assertRaises(urllib.error.HTTPError) as e:

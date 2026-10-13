@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alladin"
-version = "0.5.0"
+version = "0.6.0"
 requires-python = ">=3.11"
-description = "Paper research backend. Broad market vision; Coinbase is the only execution venue."
+description = "Solana-only spot paper trading research backend with read-only market data."
 dependencies = []
 
 [project.scripts]

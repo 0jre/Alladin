@@ -1,4 +1,4 @@
-"""Regressões de robustez: equity multi-mint, gates EVM, conselho por mint,
+"""Regressões de robustez: equity multi-mint, gates de rede, conselho por mint,
 estado legado, replay multi-mint e mint vigiado sem conselho."""
 import io
 import json
@@ -14,12 +14,11 @@ from unittest.mock import patch
 
 from alladin.agents import Council
 from alladin.engine import Service
-from alladin.models import SOL, USDC, USDC_BY_CHAIN, Candle, Config, Position, Portfolio, Proposal, Snapshot
+from alladin.models import SOL, USDC, Candle, Config, Position, Portfolio, Proposal, Snapshot
 from alladin.research import demo_feed
 from alladin.risk import security_checks
 
 BASE = 1_700_000_000
-USDC_BASE = USDC_BY_CHAIN['base']
 
 
 def bar(i, mint=SOL, price=100.0):
@@ -73,24 +72,19 @@ class StatusMarksTests(unittest.TestCase):
         self.assertIn('pending_book', status)
 
 
-class EVMSecurityTests(unittest.TestCase):
-    def test_generic_gates_apply_to_evm_snapshots(self):
-        cfg = Config(chain='base')
-        stale = Snapshot(1000, chain='base', mint=USDC_BASE, price=1,
-                         liquidity_usd=0, volume_24h_usd=0, account_checked=False)
-        reasons = security_checks(stale, cfg, 100000)
-        self.assertIn('future_or_stale_snapshot', reasons)
-        self.assertIn('insufficient_liquidity', reasons)
-        self.assertIn('insufficient_volume', reasons)
-        # Solana-only controls stay Solana-only.
-        self.assertNotIn('unverified_onchain_data', reasons)
+class SolanaOnlyTests(unittest.TestCase):
+    def test_non_solana_config_and_snapshots_are_rejected(self):
+        with self.assertRaises(ValueError):
+            Config(chain='base')
+        with self.assertRaises(ValueError):
+            Snapshot(1000, chain='base', mint=USDC, price=1)
 
-    def test_healthy_evm_snapshot_passes_generic_gates(self):
-        cfg = Config(chain='base')
+    def test_sol_only_snapshot_passes_generic_gates(self):
+        cfg = Config()
         now = 100000
-        healthy = Snapshot(now, chain='base', mint=USDC_BASE, price=1,
-                           liquidity_usd=10_000_000, volume_24h_usd=50_000_000,
-                           account_checked=False, cluster_verified=False)
+        healthy = Snapshot(now, price=1, liquidity_usd=10_000_000,
+                           volume_24h_usd=50_000_000, account_checked=True,
+                           cluster_verified=True)
         self.assertEqual(security_checks(healthy, cfg, now), [])
 
 
@@ -107,7 +101,7 @@ class CouncilMintTests(unittest.TestCase):
         book.positions = [Position('u', 'perp', 1, 10, 1, .98, 1.06, 10, 0, 99999, 'x', 0, mint=USDC)]
         features = dict(trend_features(), ema_gap=-.01, higher_trend=-.01, momentum_12=-.03)
         p, audit = Council('rules').decide(features, snap(0, USDC, 1), book, Config(), BASE + 900)
-        self.assertEqual(p.action, 'CLOSE')
+        self.assertEqual(p.action, 'HOLD')
 
 
 class LegacyStateTests(unittest.TestCase):

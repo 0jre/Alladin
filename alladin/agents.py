@@ -15,8 +15,8 @@ REPORT_SCHEMA = {'type':'object','additionalProperties':False,'properties':{
     'concerns':{'type':'array','items':{'type':'string'}}},
     'required':['stance','score','summary','evidence_keys','concerns']}
 DECISION_SCHEMA = {'type':'object','additionalProperties':False,'properties':{
-    'action':{'type':'string','enum':['LONG','SHORT','HOLD','CLOSE']},
-    'market':{'type':'string','enum':['spot','perp']},
+    'action':{'type':'string','enum':['LONG','HOLD','CLOSE']},
+    'market':{'type':'string','enum':['spot']},
     'confidence':{'type':'number','minimum':0,'maximum':1},
     'stop_fraction':{'type':'number','minimum':.005,'maximum':.1},
     'take_fraction':{'type':'number','minimum':.005,'maximum':.3},
@@ -110,7 +110,7 @@ class Council:
                 'market':{'regime':f['regime'],'score':baseline.confidence},
                 'onchain':{'warnings':list(s.warnings),'checks_passed':True},
                 'flow':{'organic_score':s.organic_score,'imbalance':s.buy_sell_imbalance},
-                'challenger':{'concerns':['Scores não calibrados','Funding/oracle obrigatório para perp']},
+                'challenger':{'concerns':['Scores não calibrados','Alladin aceita somente Solana spot paper']},
                 'manager':asdict(baseline)}
             return baseline,audit
         evidence = dict(features=f,snapshot=asdict(s),portfolio=book.serialize(),

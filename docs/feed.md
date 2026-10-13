@@ -1,6 +1,6 @@
 # Feed e contrato temporal
 
-Este exemplo é fictício. Timestamp da candle é a abertura; timestamp do snapshot é quando os dados se tornaram disponíveis. Uma barra de 900 segundos com timestamp 1767225600 fecha em 1767226500.
+Alladin aceita candles e snapshots Solana. O timestamp do candle marca sua abertura; o do snapshot marca quando a observação ficou disponível. Candles abertos, futuros ou fora de sequência são recusados.
 
 ```json
 {
@@ -11,7 +11,6 @@ Este exemplo é fictício. Timestamp da candle é a abertura; timestamp do snaps
     "low": 149.0,
     "close": 151.0,
     "volume": 100000.0,
-    "funding_rate": 0.0,
     "chain": "solana",
     "mint": "So11111111111111111111111111111111111111112"
   },
@@ -28,18 +27,14 @@ Este exemplo é fictício. Timestamp da candle é a abertura; timestamp do snaps
     "top10_account_share": null,
     "account_checked": true,
     "cluster_verified": true,
-    "oracle_price": null,
-    "oracle_timestamp": null,
-    "expected_funding_hourly": null,
-    "perp_market_verified": false,
     "source": "EXEMPLO_FICTICIO",
-    "warnings": ["Sem oracle/funding: perp será bloqueado"]
+    "warnings": ["Exemplo sintético; não usar como sinal ou preço real."]
   }
 }
 ```
 
-No endpoint, coloque o objeto acima dentro de `args` e envie `command=ingest`. Em um JSONL, use uma linha por objeto, sem indentação. `token_program` omitido usa o SPL clássico. `slot` é opcional. Candle.volume é volume **da barra** em USDC; snapshot.volume_24h_usd é volume das últimas 24 horas em USD, informado pelo indexador. Buy_sell_imbalance deve ficar entre -1 e 1.
+No endpoint, coloque os dois objetos em `args` e envie `command=ingest`. Em um JSONL, use uma linha por objeto. `token_program` omitido usa o SPL clássico; `slot` é opcional. `candle.volume` representa volume da barra em USDC; `snapshot.volume_24h_usd` representa volume observado nas últimas 24 horas pelo indexador. `buy_sell_imbalance` varia de -1 a 1.
 
-Não substitua oracle_price por preço de DEX para liberar perp. Um adaptador deve obter oracle, market account e funding do protocolo escolhido, registrar origem/horários e verificar disponibilidade das informações no tempo da decisão. Snapshot com timestamp posterior ao fechamento é recusado. Se faltar uma barra, reconstitua o feed antes de continuar; não avance por cima da lacuna.
+O feed manual é uma interface para testes e ingestão controlada. Os campos `account_checked` e `cluster_verified` só são confiáveis quando o backend autenticado controla o produtor; prefira `paper_tick` para usar as fontes implementadas.
 
-Configurações e statements de verificação provenientes do chamador autenticado são tratados como dados confiáveis pelo simulador. Esta interface não prova a origem dos dados; a implantação precisa controlar quem fornece o feed.
+Replay sintético testa causalidade e contabilidade do motor. Não representa mercado histórico e não mede rentabilidade.

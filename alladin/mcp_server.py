@@ -1,4 +1,4 @@
-"""Servidor MCP por stdio. O chat descobre as ferramentas; a ordem continua na Coinbase.
+"""Servidor MCP por stdio. Interface headless de pesquisa e paper na Solana.
 
 stdout carrega só frames JSON-RPC. Log e erro de processo vão para stderr.
 """
@@ -7,7 +7,6 @@ import sys
 import uuid
 from . import __version__
 from .dispatch import execute
-from .platforms import DESKS
 from .server import CONTRACT
 from .transport import DataError
 
@@ -29,20 +28,7 @@ def tools():
         _tool('alladin_status', 'Carteira paper, posições, pendência e bloqueios. Não envia ordem.', {}),
         _tool('alladin_audit', 'Eventos recentes de decisão e execução.', {'limit': {'type': 'integer'}}),
         _tool('alladin_contract', 'Contrato de comandos do Alladin.', {}),
-        _tool('market_radar', 'Ranking, classificação, sinais, rastreador, alpha e copy observado. Leitura. A ordem não sai daqui.', {
-            'sources': {'type': 'array', 'items': {'type': 'string'}},
-            'symbols': {'type': 'array', 'items': {'type': 'string'}},
-            'query': {'type': 'string'}, 'limit': {'type': 'integer'}, 'chain': {'type': 'string'}}),
-        _tool('market_prices', 'Preços de um símbolo nas fontes de leitura.', {'symbol': {'type': 'string'}, 'sources': {'type': 'array', 'items': {'type': 'string'}}, 'limit': {'type': 'integer'}}, ('symbol',)),
-        _tool('coinbase_products', 'Produtos públicos da Advanced Trade.', {'product_type': {'type': 'string'}, 'limit': {'type': 'integer'}}),
-        _tool('coinbase_candles', 'Candles públicos da Advanced Trade.', {'product_id': {'type': 'string'}, 'start': {'type': 'integer'}, 'end': {'type': 'integer'}, 'granularity': {'type': 'integer'}}, ('product_id', 'start', 'end')),
-        _tool('coinbase_quote', 'Cotação de swap na Coinbase. Não executa.', {'network': {'type': 'string'}, 'from_token': {'type': 'string'}, 'to_token': {'type': 'string'}, 'from_amount': {'type': 'integer'}, 'taker': {'type': 'string'}}, ('network', 'from_token', 'to_token', 'from_amount', 'taker')),
-        _tool('coinbase_preview', 'Preview de ordem spot. Não envia.', {'product_id': {'type': 'string'}, 'side': {'type': 'string'}, 'quote_size': {'type': 'string'}, 'client_order_id': {'type': 'string'}}, ('product_id', 'side', 'quote_size', 'client_order_id')),
-        _tool('coinbase_order', 'Ordem spot na Coinbase. Exige live_arm e conta conectada.', {'product_id': {'type': 'string'}, 'side': {'type': 'string'}, 'quote_size': {'type': 'string'}, 'client_order_id': {'type': 'string'}}, ('product_id', 'side', 'quote_size', 'client_order_id')),
-        _tool('coinbase_connect', 'Devolve o action_request com o link Connect account. Não devolve token. Mostre o URL à pessoa.', {'scopes': {'type': 'array', 'items': {'type': 'string'}}, 'trade': {'type': 'boolean'}}),
-        _tool('coinbase_connection', 'Diz se a sessão OAuth local existe, sem revelar o token.', {}),
-        _tool('desks', 'Mesas de análise do Alladin.', {'desk': {'type': 'string'}}),
-        _tool('platforms', 'Contratos para Cursor, ChatGPT, Claude e sandbox.', {'name': {'type': 'string'}}),
+        _tool('paper_tick', 'Coleta candles GeckoTerminal e snapshot RPC/DEX da Solana; aquece com OHLCV real e processa no máximo uma barra paper spot. Não acessa carteira nem envia transação.', {}),
         _tool('ingest', 'Barra fechada e snapshot. O conselho decide; a entrada paper sai na barra seguinte.', {'candle': {'type': 'object'}, 'snapshot': {'type': 'object'}}, ('candle', 'snapshot')),
         _tool('analyze', 'Analisa o que está gravado. Não agenda operação.', optional),
         _tool('evaluate', 'Valida risco de uma proposta. Não executa.', {'proposal': {'type': 'object'}}, ('proposal',)),
@@ -89,7 +75,7 @@ def handle(service, message):
             'protocolVersion': version if version in ACCEPTED else PROTOCOL,
             'capabilities': {'tools': {'listChanged': False}, 'prompts': {'listChanged': False}},
             'serverInfo': {'name': 'alladin', 'version': __version__},
-            'instructions': 'Visão de mercado é leitura. Ordem só na Coinbase, com live_arm. Se a ferramenta devolver action_request, mostre o link Connect account e não leia o token.',
+            'instructions': 'Alladin roda apenas Solana spot em paper. paper_tick coleta mercado atual, toma decisões com o motor configurado e registra apenas fills simulados. Nunca conecte carteira nem assine transação.',
         }
     if method == 'ping':
         return {}
@@ -98,13 +84,9 @@ def handle(service, message):
     if method == 'tools/call':
         return _call(service, params)
     if method == 'prompts/list':
-        return {'prompts': [{'name': item['id'], 'description': item['title']} for item in DESKS]}
+        return {'prompts': []}
     if method == 'prompts/get':
-        found = [item for item in DESKS if item['id'] == params.get('name')]
-        if not found:
-            raise ValueError('Mesa desconhecida')
-        return {'description': found[0]['title'], 'messages': [
-            {'role': 'user', 'content': {'type': 'text', 'text': found[0]['task']}}]}
+        raise ValueError('Prompt não encontrado')
     raise ValueError('Método MCP desconhecido')
 
 

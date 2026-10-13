@@ -33,7 +33,7 @@ def security_checks(s,cfg,now):
             reasons.append('active_token_authority')
         if s.mint != SOL and (s.top10_account_share is None or s.top10_account_share > cfg.max_top10_account_share):
             reasons.append('holder_concentration_unknown_or_high')
-    # Generic data gates apply to every chain, including EVM swap routes.
+    # Price/liquidity gates apply to the current Solana spot observation.
     if s.timestamp > now or now-s.timestamp > cfg.max_snapshot_age_seconds:
         reasons.append('future_or_stale_snapshot')
     if s.liquidity_usd < cfg.min_liquidity_usd:
@@ -114,7 +114,7 @@ def approve(p,f,s,book,cfg,now,entry_price=None,instrument=None):
     budget -= 2*cfg.fixed_cost_usdc
     notional = max(0,budget)/(p.stop_fraction+cost_fraction)
     side = 1 if p.action == 'LONG' else -1
-    # Combined gross exposure across spot and perp; no fake diversification.
+    # Combined exposure limit; no fake diversification across positions.
     notional = min(notional,equity*cfg.max_position_fraction,
                    max(0,equity*cfg.max_gross_fraction-book.gross(price)),
                    max(0,equity*cfg.max_net_fraction-side*book.net(price)),
