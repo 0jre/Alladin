@@ -19,13 +19,20 @@ class Store:
             CREATE TABLE IF NOT EXISTS event_seals (seq INTEGER PRIMARY KEY, previous TEXT NOT NULL, digest TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS requests (key TEXT PRIMARY KEY, digest TEXT NOT NULL, response TEXT NOT NULL);
             ''')
-    def connect(self):
+    def _open(self):
         db = sqlite3.connect(self.path,timeout=60)
         db.execute('PRAGMA busy_timeout=60000')
         return db
     @contextmanager
+    def connect(self):
+        db = self._open()
+        try:
+            yield db
+        finally:
+            db.close()
+    @contextmanager
     def transaction(self):
-        db = self.connect()
+        db = self._open()
         try:
             db.execute('BEGIN IMMEDIATE')
             yield db

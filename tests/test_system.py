@@ -16,7 +16,6 @@ from alladin.features import features
 from alladin.risk import approve,Approval,security_checks,update_breakers
 from alladin.broker import PaperBroker
 from alladin.agents import Council,OpenAIJSON,validate_report
-from alladin.providers import SolanaRPC,DexScreener,JupiterQuotes
 from alladin.engine import Service
 from alladin.research import demo_feed,export
 from alladin.server import build_server
@@ -39,9 +38,10 @@ def proposal(market='spot',action='LONG'):
 class ModelAndFeatureTests(unittest.TestCase):
     def test_only_solana(self):
         with self.assertRaises(ValueError):
-            Config(chain='ethereum')
+            Config(chain='bitcoin')
         with self.assertRaises(ValueError):
-            Candle(0,1,1,1,1,1,chain='ethereum')
+            Candle(0,1,1,1,1,1,chain='bitcoin')
+        self.assertEqual(Config(chain='base').chain, 'base')
     def test_no_live_mode(self):
         with self.assertRaises(ValueError):
             Config(execution='live')
@@ -182,11 +182,13 @@ class AgentTests(unittest.TestCase):
             calls=0
             def ask(self,role,evidence,schema,name):
                 if name=='manager':
-                    return asdict(proposal())
+                    d=asdict(proposal())
+                    d.pop('mint',None)
+                    return d
                 return dict(stance='LONG',score=.8,summary='Brief assessment',evidence_keys=['price'],concerns=[])
         p,a=Council('llm',client=Fake()).decide(feature_fixture(),snapshot(),Portfolio(10000,10000,10000),Config(),1000)
         self.assertEqual(p.action,'LONG')
-        self.assertEqual(len(a['reports']),4)
+        self.assertEqual(len(a['reports']),5)
     def test_refusal_holds(self):
         class FakeHTTP:
             def json(self,*args,**kwargs):
@@ -195,30 +197,6 @@ class AgentTests(unittest.TestCase):
             c=OpenAIJSON(http=FakeHTTP())
             with self.assertRaises(DataError):
                 c.ask('test',{}, {},'test')
-
-class ProviderTests(unittest.TestCase):
-    def test_write_rpc_not_allowed(self):
-        with self.assertRaises(DataError):
-            SolanaRPC().call('sendTransaction',['anything'])
-    def test_wrong_cluster(self):
-        class Fake:
-            def json(self,*args,**kwargs):return {'result':'devnet'}
-        with self.assertRaises(DataError):
-            SolanaRPC(Fake()).verify()
-    def test_sol_pool_exact_chain_and_mints(self):
-        class Fake:
-            def json(self,*args,**kwargs):
-                return [dict(chainId='ethereum',baseToken={'address':SOL},quoteToken={'address':USDC},priceNative='1',liquidity={'usd':10})]
-        with self.assertRaises(DataError):
-            DexScreener(Fake()).market(SOL)
-    def test_dex_uses_usdc_pair_price_not_usd(self):
-        class Fake:
-            def json(self,*args,**kwargs):
-                return [dict(chainId='solana',baseToken={'address':SOL},quoteToken={'address':USDC},priceNative='151',priceUsd='150',liquidity={'usd':10000000},volume={'h24':10})]
-        self.assertEqual(DexScreener(Fake()).market(SOL)['price'],151)
-    def test_quote_never_other_chain_or_pair(self):
-        with self.assertRaises(DataError):
-            JupiterQuotes().quote(SOL,SOL,1)
 
 class ServiceTests(unittest.TestCase):
     def setUp(self):
@@ -325,7 +303,10 @@ class HTTPTests(unittest.TestCase):
             self.request('/v1/status',auth=False)
         self.assertEqual(e.exception.code,401)
     def test_health_and_json_contract(self):
-        with self.request('/health',auth=False) as r:self.assertEqual(json.load(r)['execution'],'paper')
+        with self.request('/health',auth=False) as r:
+            body=json.load(r)
+            self.assertEqual(body['execution'],'paper')
+            self.assertEqual(body['venue'],'coinbase')
         with self.request('/v1/contract') as r:self.assertIn('ingest',json.load(r)['commands'])
     def test_unknown_command_not_shell(self):
         with self.assertRaises(urllib.error.HTTPError) as e:

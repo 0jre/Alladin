@@ -1,20 +1,20 @@
 [
   {
     "type": "function",
-    "name": "solana_backend_status",
-    "description": "Read the Solana PAPER portfolio, open positions, pending decision and circuit breakers from GET /v1/status.",
+    "name": "alladin_status",
+    "description": "Read the paper portfolio, open positions, pending decision and circuit breakers from GET /v1/status. Market data and live orders come only from Coinbase.",
     "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": false},
     "strict": true
   },
   {
     "type": "function",
-    "name": "solana_backend_command",
-    "description": "Call POST /v1/commands on the configured authenticated Solana PAPER backend. The backend validates command arguments. Never executes arbitrary shell commands or signs a transaction. Supply a unique idempotency key per logical request; reuse the same key when retrying.",
+    "name": "alladin_command",
+    "description": "Call POST /v1/commands on the authenticated Alladin backend. The only external venue is Coinbase. Never executes a shell command or accepts a wallet secret. Supply a unique idempotency key per logical request.",
     "parameters": {
       "type": "object",
       "properties": {
-        "command": {"type": "string", "enum": ["collect", "inspect", "wallet", "quote", "ingest", "analyze", "evaluate", "halt", "finalize"]},
-        "args": {"type": "object", "description": "Arguments exactly matching GET /v1/contract; use empty object for commands with no arguments."},
+        "command": {"type": "string", "enum": ["ingest", "analyze", "evaluate", "halt", "finalize", "universe", "admit", "watch", "unwatch", "coinbase_products", "coinbase_candles", "coinbase_quote", "coinbase_preview", "coinbase_order", "coinbase_connect", "coinbase_connection", "market_radar", "market_prices", "desks", "platforms"]},
+        "args": {"type": "object", "description": "Arguments exactly matching GET /v1/contract; use an empty object for commands with no arguments."},
         "idempotency_key": {"type": "string"}
       },
       "required": ["command", "args", "idempotency_key"]

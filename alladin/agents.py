@@ -85,6 +85,7 @@ class Council:
             raise ValueError('agent_mode deve ser rules ou llm')
         self.mode = mode
         self.client = client or OpenAIJSON(model=model,max_calls=max_calls)
+        self.memory = []
     def decide(self,f,s,book,cfg,now):
         ideas = candidates(f,s,cfg)
         actionable = []
@@ -108,15 +109,17 @@ class Council:
             audit['reports'] = {
                 'market':{'regime':f['regime'],'score':baseline.confidence},
                 'onchain':{'warnings':list(s.warnings),'checks_passed':True},
+                'flow':{'organic_score':s.organic_score,'imbalance':s.buy_sell_imbalance},
                 'challenger':{'concerns':['Scores não calibrados','Funding/oracle obrigatório para perp']},
                 'manager':asdict(baseline)}
             return baseline,audit
         evidence = dict(features=f,snapshot=asdict(s),portfolio=book.serialize(),
-                        candidates=[asdict(p) for p in ideas],config=asdict(cfg))
-        allowed = set(f)|set(asdict(s))|{'portfolio','candidates','config'}
+                        candidates=[asdict(p) for p in ideas],config=asdict(cfg),memory=list(self.memory)[-20:])
+        allowed = set(f)|set(asdict(s))|{'portfolio','candidates','config','memory'}
         roles = {
             'market':'Evaluate momentum, regime, higher-timeframe confluence, reversal and volatility.',
             'onchain':'Evaluate SPL mint controls, liquidity, concentration limitations and data completeness.',
+            'flow':'Evaluate organic activity, buy/sell imbalance and whether flow confirms or contradicts the trade.',
             'challenger':'Challenge the proposed trade: costs, adverse funding, opposing signals, stale data and downside.'}
         try:
             for name,role in roles.items():
@@ -124,7 +127,8 @@ class Council:
                 audit['reports'][name] = validate_report(self.client.ask(role,inp,REPORT_SCHEMA,name),allowed)
             decision = self.client.ask(
                 'Act as portfolio manager. Choose exactly one PAPER proposal. Prefer HOLD on disagreement. '
-                'Choose a supplied candidate strategy for entry; you may adjust stop/take/horizon within schema.',
+                'Choose a supplied candidate strategy for entry; you may adjust stop/take/horizon within schema. '
+                'You cannot choose notional, size, leverage or limits.',
                 {**evidence,'reports':audit['reports']},DECISION_SCHEMA,'manager')
             if not isinstance(decision,dict) or set(decision) != set(DECISION_SCHEMA['required']):
                 raise DataError('Contrato de decisão inválido')

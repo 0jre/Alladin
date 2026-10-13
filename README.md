@@ -1,8 +1,8 @@
-# Alladin — backend Python para pesquisa autônoma em Solana
+# Alladin — pesquisa autônoma com a Coinbase como única fonte
 
-Versão 0.3 de um **servidor de pesquisa com decisões autônomas e execução exclusivamente simulada**. Sem frontend, browser, Phantom browser extension ou comandos de shell expostos. As interfaces são JSON HTTP, CLI e um cliente Python para agentes externos. Ativos e dados restringem-se à Solana; não há conectores de corretoras nem outras blockchains.
+Servidor de pesquisa com decisões autônomas e execução simulada. Sem frontend e sem comandos de shell. As interfaces são JSON HTTP, CLI e um cliente Python. Mercado e execução externa passam só pela Coinbase: corretora Advanced Trade e swaps em Ethereum, Base e Arbitrum.
 
-O universo negociável desta versão é **SOL/USDC**, com spot comprado e perp comprado/vendido. Inspeção de outros mints SPL é read-only. Não há assinatura nem transmissão de transações. O servidor roda fora da blockchain, como qualquer backend Python que lê Solana; não é um programa on-chain.
+O simulador paper continua local. SOL cotado na corretora é um produto Coinbase, não uma leitura direta da rede Solana. O padrão é paper. `shadow` bloqueia a entrada se a cotação cair. `live` só existe com `live_arm`, allowlist e teto. O servidor não é um programa on-chain.
 
 ## Executar agora
 
@@ -41,7 +41,7 @@ python3 -m alladin call --request docs/request_analyze.json --key analysis-0001
 O comando analyze precisa de barras já ingeridas. Um teste de conectores read-only é:
 
 ```bash
-python3 -m alladin call --request docs/request_collect.json --key collect-0001
+python3 -m alladin call --request docs/request_collect.json --key products-0001
 ```
 
 Cada nova coleta usa uma chave nova; uma repetição com a mesma chave retorna a resposta anterior, inclusive seu timestamp. A mesma chave com outro corpo é recusada. Mutações, resposta idempotente e evento são persistidos atomicamente em SQLite WAL. Repetir a última barra com o mesmo conteúdo e outra chave também não executa de novo. Barras fora de ordem, lacunas ou revisão de uma barra processada são recusadas.
@@ -68,6 +68,16 @@ Falhas, recusas, contratos inválidos, evidências inexistentes e esgotamento do
 
 O modo padrão `--agents rules` é uma referência quantitativa reproduzível, **não IA**. O status e todos os relatórios identificam o modo. O servidor não se mantém ativo ao fechar seu processo; para operação contínua é necessário um supervisor de serviço.
 
+## MCP
+
+O chat fala com o Alladin por MCP, no stdio. Cursor, Claude e os modos com computador sandbox descobrem as ferramentas sozinhos. A ordem continua na Coinbase. O HTTP em `127.0.0.1` fica para o sandbox e para clientes que já usam idempotência.
+
+```bash
+python -m alladin mcp
+```
+
+No Cursor, o arquivo `.cursor/mcp.json` deste projeto sobe esse comando. Se uma ferramenta devolver `action_request`, o chat mostra o link Connect account.
+
 ## Endpoints e comandos para agentes externos
 
 | Interface | Resultado |
@@ -76,10 +86,13 @@ O modo padrão `--agents rules` é uma referência quantitativa reproduzível, *
 | `GET /v1/status` | Saldo fictício, posições, proposta pendente, bloqueios |
 | `GET /v1/contract` | Contrato de comandos |
 | `GET /v1/audit?limit=100` | Eventos de análise, decisão e execução |
-| `POST /v1/commands` com `collect` | Snapshot atual de SOL/USDC, somente leitura |
-| `inspect` com `mint` | Dados públicos de um mint SPL clássico |
-| `wallet` com `address` | Saldo SOL público e 20 assinaturas recentes |
-| `quote` | Cotação Jupiter de SOL/USDC; não constrói transação |
+| `coinbase_products` | Produtos públicos da Advanced Trade |
+| `coinbase_candles` | Candles públicos da corretora |
+| `coinbase_quote` | Cotação de swap na Trade API; não executa |
+| `coinbase_preview` / `coinbase_order` | Preview, e ordem spot só com `live_arm` |
+| `coinbase_connect` | Pedido de ação com o link Connect account; não devolve token |
+| `market_radar` / `market_prices` | Ranking, classificação, sinais, rastreador, alpha e copy observado |
+| `desks` / `platforms` | Mesas de análise e contrato para ChatGPT, Claude, Work e sandbox |
 | `ingest` | Barra fechada + snapshot → conselho → risco → ação pendente |
 | `analyze` | Análise dos dados armazenados, sem agendar operação |
 | `evaluate` com `proposal` | Validação de risco, sem executar |
@@ -102,17 +115,17 @@ O modo padrão `--agents rules` é uma referência quantitativa reproduzível, *
 
 Todos os parâmetros em `config.json` são hipóteses para pesquisa, não parâmetros recomendados para dinheiro real. Alterar configuração de sessão existente é recusado; use outro banco.
 
-## Dados Solana
+## Dados
 
-`SOLANA_RPC_URL` configura um RPC HTTPS; o padrão é mainnet pública. O coletor verifica o genesis hash completo da mainnet antes de ler. Os métodos RPC são allowlisted e read-only. Usa getAccountInfo, getTokenSupply e getTokenLargestAccounts para mints; getBalance e getSignaturesForAddress para endereços públicos. Token-2022 é recusado, pois suas extensões não estão integralmente decodificadas.
+A execução externa é a Coinbase. `coinbase_products` e `coinbase_candles` leem a Advanced Trade sem chave. `coinbase_quote` pede a cotação de swap em Ethereum, Base ou Arbitrum e não executa. `coinbase_order` só envia ordem spot com `live_arm` e `COINBASE_JWT`, ou com a sessão OAuth gravada no processo.
 
-DEX Screener é um indexador externo de atividade Solana, não leitura direta de todas as pools. O coletor filtra `chainId=solana`, mint base exato e mint USDC da cotação, selecionando a pool mais líquida entre as retornadas. Usa `priceNative` na pool USDC, não trata USD e USDC como equivalentes. Liquidez/volume são informados pelo indexador; não são garantia de execução.
+`market_radar` e `market_prices` leem Binance, OKX, CoinGecko, CoinMarketCap, DexScreener e GMGN. Eles montam ranking, tabela de classificação, sinais, rastreador, alpha e candidatos de copy trading. Essa leitura não envia ordem. CoinMarketCap usa `CMC_API_KEY` no processo. CoinGecko aceita `COINGECKO_API_KEY` opcional.
 
-`JUPITER_API_KEY` habilita o endpoint de quote documentado, com amount em unidades raw e slippage limitado. Ainda não é utilizado como fill do simulador. Não há construções de swap, signers nem chamadas `sendTransaction`.
+`coinbase_connect` devolve um `action_request` com o link Connect account em `https://login.coinbase.com/oauth2/auth`. O chat mostra o link. O token fica no processo local e não volta no JSON. Defina `COINBASE_OAUTH_CLIENT_ID`, `COINBASE_OAUTH_REDIRECT_URI` e, para a troca do code, `COINBASE_OAUTH_CLIENT_SECRET`. O redirect local esperado pelo servidor é `/oauth/coinbase/callback`.
 
-O horário do snapshot de collect indica aquisição, não comprova a atualização da pool no indexador. A concentração se refere a contas, não titulares consolidados; pools/custodiantes não são classificados. Para wSOL o denominador de supply não fornece concentração útil, então o campo fica desconhecido.
+`platforms` entrega o contrato de ferramenta para Cursor, ChatGPT, ChatGPT Work, Claude, Claude Work e computador sandbox. `desks` lista as mesas do Alladin. As categorias seguem a organização pública de [awesome-claude-finance-prompts](https://github.com/devfinprojects/awesome-claude-finance-prompts); o texto é do Alladin e obriga o uso destas ferramentas.
 
-**O coletor não produz histórico OHLCV nem alimenta automaticamente o servidor.** Um feed confiável deve chamar ingest com barras fechadas e snapshots correspondentes. Não se inventa volume de uma barra a partir de volume acumulado de 24h. O coletor também não fornece oracle, funding e market account de Drift/Adrena; posições perp permanecem bloqueadas até esses dados serem fornecidos por um adaptador validado. Flags do snapshot de ingest são evidências declaradas pelo chamador autenticado; não são prova criptográfica.
+O servidor não baixa sozinho o histórico. Um feed confiável chama `ingest` com barras fechadas. Não se inventa volume de uma barra a partir de volume de 24 horas. Flags do snapshot são evidências do chamador autenticado.
 
 ## Formato do feed
 

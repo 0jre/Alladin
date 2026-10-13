@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from .models import SOL, TOKEN_PROGRAM
+from .models import SOL, TOKEN_PROGRAM, TOKEN_2022
 
 @dataclass(frozen=True)
 class Approval:
@@ -12,11 +12,22 @@ class Approval:
 
 def security_checks(s,cfg,now):
     reasons = []
-    if s.chain != 'solana' or s.mint != cfg.mint:
+    if s.chain != cfg.chain:
         reasons.append('wrong_chain_or_mint')
+    if s.chain in {'ethereum', 'base', 'arbitrum'}:
+        return reasons
     if not s.account_checked or not s.cluster_verified:
         reasons.append('unverified_onchain_data')
-    if s.token_program != TOKEN_PROGRAM:
+    if s.token_program == TOKEN_2022:
+        if not s.extensions_decoded:
+            reasons.append('token2022_extensions_not_decoded')
+        if set(s.extensions) & {'non_transferable', 'permanent_delegate', 'pausable', 'default_frozen'}:
+            reasons.append('dangerous_token2022_extension')
+        if 'transfer_hook' in s.extensions:
+            reasons.append('unknown_transfer_hook')
+        if 'transfer_fee' in s.extensions and not cfg.allow_transfer_fee:
+            reasons.append('transfer_fee_blocked')
+    elif s.token_program != TOKEN_PROGRAM:
         reasons.append('unsupported_token_program')
     if s.mint_authority is not None or s.freeze_authority is not None:
         reasons.append('active_token_authority')
@@ -45,11 +56,18 @@ def update_breakers(book,cfg,price,timestamp):
     # Latching: a daily halt needs a new research run; never silently resumes.
     return equity
 
-def approve(p,f,s,book,cfg,now,entry_price=None):
+def approve(p,f,s,book,cfg,now,entry_price=None,instrument=None):
     if p.action in {'HOLD','CLOSE'}:
         return Approval(True,('non_entry',))
-    price = entry_price or f['price']
+    price = entry_price or f.get('price') or s.price
     reasons = security_checks(s,cfg,now)
+    if getattr(p, 'mint', s.mint) != s.mint:
+        reasons.append('proposal_mint_mismatch')
+    if s.mint != cfg.mint:
+        if not instrument or instrument.get('status') != 'negotiable' or instrument.get('mint') != s.mint:
+            reasons.append('mint_not_negotiable')
+        if not (s.sell_simulated and s.route_buy and s.route_sell):
+            reasons.append('exit_route_not_proven')
     if book.halted:
         reasons.append('circuit_breaker:'+book.halt_reason)
     if now < book.cooldown_until:
@@ -58,7 +76,7 @@ def approve(p,f,s,book,cfg,now,entry_price=None):
         reasons.append('market_not_enabled')
     if p.market == 'spot' and p.action == 'SHORT':
         reasons.append('spot_cannot_short')
-    if any(x.market == p.market for x in book.positions):
+    if any(x.market == p.market and x.mint == getattr(p, 'mint', SOL) for x in book.positions):
         reasons.append('market_position_already_open')
     if p.confidence < cfg.min_confidence:
         reasons.append('low_score')

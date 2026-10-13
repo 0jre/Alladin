@@ -1,1 +1,1 @@
-{"command":"collect","args":{}}
+{"command":"coinbase_products","args":{"product_type":"SPOT","limit":20}}

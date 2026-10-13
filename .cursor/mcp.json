@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "alladin": {
+      "command": "python",
+      "args": ["-m", "alladin", "mcp"]
+    }
+  }
+}

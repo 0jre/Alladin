@@ -1,2 +1,2 @@
-"""Solana Agent Lab — autonomous paper research, no transaction signing."""
-__version__ = '0.3.0'
+"""Alladin — paper research. Market vision is read-only. Orders go through Coinbase."""
+__version__ = '0.5.0'

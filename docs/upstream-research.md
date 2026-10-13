@@ -20,6 +20,24 @@ Pesquisa consultada em 13/10/2026. Seleção ampla, não inventário exaustivo n
 
 Também examinados na busca ampla: [RD-Agent](https://github.com/microsoft/RD-Agent), [OctoBot](https://github.com/Drakkar-Software/OctoBot), [AI-Trader](https://github.com/HKUDS/AI-Trader), [Eliza](https://github.com/elizaOS/eliza), [NOFX](https://github.com/NoFxAiOS/nofx). São candidatos complementares, não componentes validados do Alladin.
 
+## Segunda leitura — 13/10/2026, arquitetura multi-token
+
+Consulta para o plano em `docs/architecture.md`. Nenhum repositório abaixo foi incorporado.
+
+| Projeto ou doc | O que aproveitar | O que não trazer |
+|---|---|---|
+| [NautilusTrader architecture](https://nautilustrader.io/docs/latest/concepts/architecture/) e [execution](https://nautilustrader.io/docs/latest/concepts/execution/) | RiskEngine na frente de toda ordem; mesmo núcleo em backtest e live; OMS com estado de ordem | Núcleo Rust e adaptadores de corretora tradicionais |
+| [Hummingbot architecture](https://hummingbot.org/blog/hummingbot-architecture---part-1/) | Conector que acompanha estado da ordem e degrada se a rede falha; gateway separado para DEX | Gateway de outras chains e market making como produto |
+| [TradingAgents](https://github.com/TauricResearch/TradingAgents) | Analistas em paralelo, debate, gestor com modelo mais forte, memória do resultado | Ferramentas de ação americana e execução simulada de bolsa |
+| [Solana Agent Kit v2](https://github.com/sendaifun/solana-agent-kit/blob/v2/MIGRATING.md) | Plugins em vez de dezenas de ferramentas no contexto; wallet plugável sem chave privada obrigatória no construtor | Pacote TypeScript monolítico e ações de bridge, NFT e lançamento de token |
+| [Jupiter Ultra](https://developers.jup.ag/docs/ultra) e [Tokens](https://developers.jup.ag/docs/tokens) | Universo negociável = pool em AMM suportada; Shield, organic score, preço | Tratar Ultra como fill do simulador ou USD como USDC |
+| [Helius + Jupiter](https://www.helius.dev/docs/agents/skills/jupiter) | Plano de dados (DAS, stream) separado do envio (Sender) | Submissão na fase de pesquisa |
+| [AuditSwap](https://github.com/jaiswalraj03014/AuditSwap) | Funil listagem → segurança → rota, com rejeição antes do swap | Execução imediata em token novo sem histórico |
+| [rugcheck-ai](https://github.com/MrWizardlyLoaf/rugcheck-ai) | Ler o mint on-chain e simular venda antes de comprar | MCP que devolve swap para o modelo assinar |
+| Agente Kubernetes/LangGraph de sobrevivência em devnet | Ciclo perceber, decidir, agir, refletir, com política antes da ação | Agente que reescreve e faz deploy do próprio código |
+
+Critério repetido: licença e commit fixos antes de qualquer dependência; adaptador estreito; Solana apenas; paper por omissão.
+
 ## Critérios para integração
 
 1. Fixar commit e registrar licença completa, avisos e dependências transitivas.

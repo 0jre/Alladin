@@ -1,0 +1,69 @@
+import io
+import json
+import os
+import tempfile
+import unittest
+
+from alladin.engine import Service
+from alladin.mcp_server import handle, read_message, serve, write_message
+from alladin.models import Config
+
+
+def frame(payload):
+    raw = io.BytesIO()
+    write_message(raw, payload)
+    raw.seek(0)
+    return read_message(raw)
+
+
+class MCPTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        cfg = Config.load(os.path.join(os.path.dirname(__file__), '..', 'config.json'))
+        self.service = Service(cfg, os.path.join(self.tmp.name, 'session.sqlite'), 'rules', None, 20)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_initialize_lists_tools_and_calls_a_desk(self):
+        message = frame({'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-06-18'}})
+        opened = handle(self.service, message)
+        self.assertEqual(opened['protocolVersion'], '2025-06-18')
+        self.assertEqual(opened['serverInfo']['name'], 'alladin')
+        listed = handle(self.service, {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list'})
+        names = {tool['name'] for tool in listed['tools']}
+        self.assertIn('market_radar', names)
+        self.assertIn('coinbase_connect', names)
+        self.assertIn('coinbase_order', names)
+        called = handle(self.service, {'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call', 'params': {
+            'name': 'desks', 'arguments': {'desk': 'copy'}}})
+        self.assertFalse(called['isError'])
+        body = json.loads(called['content'][0]['text'])
+        self.assertIn('coinbase_order', body['task'])
+        prompts = handle(self.service, {'jsonrpc': '2.0', 'id': 4, 'method': 'prompts/list'})
+        self.assertIn('copy', {item['name'] for item in prompts['prompts']})
+
+    def test_stdio_loop_answers_and_ignores_notifications(self):
+        incoming = io.BytesIO()
+        write_message(incoming, {'jsonrpc': '2.0', 'method': 'notifications/initialized'})
+        write_message(incoming, {'jsonrpc': '2.0', 'id': 7, 'method': 'tools/call', 'params': {
+            'name': 'alladin_status', 'arguments': {}}})
+        incoming.seek(0)
+        outgoing = io.BytesIO()
+        code = serve(self.service, incoming, outgoing)
+        self.assertEqual(code, 0)
+        outgoing.seek(0)
+        reply = read_message(outgoing)
+        self.assertEqual(reply['id'], 7)
+        status = json.loads(reply['result']['content'][0]['text'])
+        self.assertEqual(status['venue'], 'coinbase')
+        self.assertIsNone(read_message(outgoing))
+
+    def test_unknown_tool_is_a_tool_error(self):
+        result = handle(self.service, {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {
+            'name': 'exec', 'arguments': {'cmd': 'ls'}}})
+        self.assertTrue(result['isError'])
+
+
+if __name__ == '__main__':
+    unittest.main()

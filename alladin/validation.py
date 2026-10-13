@@ -5,10 +5,26 @@ from dataclasses import asdict,replace
 from .engine import Service
 from .research import jsonl_feed,export
 
+def assert_causal_feed(rows,timeframe):
+    """Recusa snapshot, disponibilidade ou mint que a decisão da barra ainda não podia ver."""
+    previous = {}
+    for b,s in rows:
+        if s.mint != b.mint:
+            raise ValueError('Lookahead: mint divergente entre candle e snapshot')
+        end = b.timestamp+timeframe
+        if s.timestamp > end or (s.available_at is not None and s.available_at > end):
+            raise ValueError('Lookahead: dado posterior ao fechamento')
+        prev = previous.get(b.mint)
+        if prev is not None and b.timestamp != prev+timeframe:
+            raise ValueError('Lacuna no feed de validação')
+        previous[b.mint] = b.timestamp
+    return sorted(previous)
+
 def validate(cfg,feed_path,output,folds=3):
     if not 2 <= folds <= 10:
         raise ValueError('folds deve estar entre 2 e 10')
     rows=list(jsonl_feed(feed_path))
+    cohorts=assert_causal_feed(rows,cfg.timeframe_seconds)
     available=len(rows)-cfg.warmup_bars
     if available < folds*40:
         raise ValueError('Feed precisa de warmup + pelo menos 40 barras de avaliação por fold')
@@ -37,7 +53,7 @@ def validate(cfg,feed_path,output,folds=3):
                            warmup_bars=cfg.warmup_bars)
             results.append(summary)
     report=dict(method='fixed_parameter_chronological_folds',folds=folds,
-                optimized=False,llm_evaluated=False,results=results,
+                optimized=False,llm_evaluated=False,cohorts=cohorts,results=results,
                 warnings=['Sem otimização ou seleção pelo retorno desses folds.',
                           'Indicadores recebem apenas warmup anterior; conta reinicia por fold.',
                           'Dados sintéticos continuam sintéticos; executar em histórico real antes de inferir vantagem.'])

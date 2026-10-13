@@ -1,6 +1,6 @@
 """Paper only: explicit conservative OHLC event ordering and isolated perp approximation."""
 import hashlib
-from .models import Position
+from .models import Position, SOL
 
 class PaperBroker:
     def __init__(self,book,cfg):
@@ -10,7 +10,8 @@ class PaperBroker:
     def open(self,p,a,price,ts):
         if not a.approved or a.notional <= 0 or self.book.halted:
             raise ValueError('Entrada sem aprovação válida')
-        if any(x.market == p.market for x in self.book.positions):
+        mint = getattr(p, 'mint', SOL)
+        if any(x.market == p.market and x.mint == mint for x in self.book.positions):
             raise ValueError('Posição duplicada')
         side = 1 if p.action == 'LONG' else -1
         if p.action not in {'LONG','SHORT'} or p.market == 'spot' and side == -1:
@@ -22,10 +23,10 @@ class PaperBroker:
             raise ValueError('Saldo fictício insuficiente')
         self.book.cash -= margin+cost
         self.book.fees_paid += cost
-        pid = hashlib.sha256(f'{ts}:{p.market}:{side}'.encode()).hexdigest()[:16]
+        pid = hashlib.sha256(f'{ts}:{mint}:{p.market}:{side}'.encode()).hexdigest()[:16]
         pos = Position(pid,p.market,side,qty,price,price*(1-side*p.stop_fraction),
                        price*(1+side*p.take_fraction),0 if p.market == 'spot' else margin,
-                       ts,ts+p.horizon_bars*self.cfg.timeframe_seconds,p.strategy,cost,best_close=price)
+                       ts,ts+p.horizon_bars*self.cfg.timeframe_seconds,p.strategy,cost,best_close=price,mint=mint)
         self.book.positions.append(pos)
         return dict(event='OPEN',position_id=pid,market=p.market,side=side,qty=qty,price=price,cost=cost)
     def close(self,pos,price,ts,reason):
@@ -38,7 +39,7 @@ class PaperBroker:
         self.book.cash += settlement-cost
         self.book.fees_paid += cost
         realized = pnl-pos.entry_cost-cost-pos.funding_paid
-        event = dict(event='CLOSE',position_id=pos.id,market=pos.market,side=pos.side,
+        event = dict(event='CLOSE',position_id=pos.id,market=pos.market,mint=pos.mint,side=pos.side,
                      qty=pos.qty,entry=pos.entry,price=price,opened_at=pos.opened_at,
                      closed_at=ts,reason=reason,strategy=pos.strategy,net_pnl=realized,
                      funding_paid=pos.funding_paid,cost=cost)
@@ -52,6 +53,8 @@ class PaperBroker:
     def on_bar(self,b):
         events = []
         for pos in list(self.book.positions):
+            if pos.mint != b.mint:
+                continue
             if pos.market == 'perp' and b.funding_rate:
                 funding = pos.side*pos.qty*b.open*b.funding_rate
                 pos.margin -= funding
@@ -77,13 +80,15 @@ class PaperBroker:
             elif b.timestamp >= pos.expires_at:
                 events.append(self.close(pos,b.close,b.timestamp,'time_exit'))
         return events
-    def trail(self,price,atr):
+    def trail(self,price,atr,mint=SOL):
         for p in self.book.positions:
+            if p.mint != mint:
+                continue
             if p.side*(price-p.best_close) > 0:
                 p.best_close = price
             candidate = p.best_close-p.side*atr*self.cfg.trailing_atr_multiple
             # Trailing stops updated after bar closes; apply only on subsequent bars.
             if p.side*(candidate-p.stop) > 0 and p.side*(price-candidate) > 0:
                 p.stop = candidate
-    def flatten(self,price,ts,reason):
-        return [self.close(p,price,ts,reason) for p in list(self.book.positions)]
+    def flatten(self,price,ts,reason,mint=None):
+        return [self.close(p,price,ts,reason) for p in list(self.book.positions) if mint is None or p.mint == mint]

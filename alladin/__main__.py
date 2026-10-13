@@ -9,13 +9,17 @@ from .models import Config
 from .engine import Service
 from .research import write_demo,jsonl_feed,export
 from .server import build_server,CONTRACT
-from .providers import collect,SolanaRPC,JupiterQuotes
+from .mcp_server import serve as serve_mcp
+from .coinbase import Coinbase
+from .connect import connect_request
+from .market import MarketVision
+from .platforms import platforms
 from .client import BackendClient
-from .transport import DataError
+from .transport import HTTP, DataError
 from .validation import validate
 
 def main():
-    parser = argparse.ArgumentParser(description='Solana-only autonomous paper agent BACKEND; JSON/CLI, no UI')
+    parser = argparse.ArgumentParser(description='Paper research backend. Market vision is read-only. Orders go through Coinbase.')
     parser.add_argument('--config',default='config.json')
     parser.add_argument('--db',default='data/session.sqlite')
     parser.add_argument('--agents',choices=['rules','llm'],default='rules')
@@ -25,11 +29,14 @@ def main():
     demo = sub.add_parser('generate-demo'); demo.add_argument('--output',default='data/demo.jsonl'); demo.add_argument('--bars',type=int,default=600)
     run = sub.add_parser('replay'); run.add_argument('--feed',required=True); run.add_argument('--output',default='results'); run.add_argument('--finalize',action='store_true')
     serve = sub.add_parser('serve'); serve.add_argument('--port',type=int,default=8080)
+    sub.add_parser('mcp')
     sub.add_parser('status'); sub.add_parser('contract')
     exp = sub.add_parser('export'); exp.add_argument('--output',default='results')
-    sub.add_parser('collect')
-    inspect = sub.add_parser('inspect'); inspect.add_argument('mint')
-    wallet = sub.add_parser('wallet'); wallet.add_argument('address')
+    products = sub.add_parser('products'); products.add_argument('--type', default='SPOT'); products.add_argument('--limit', type=int, default=50)
+    candles = sub.add_parser('candles'); candles.add_argument('product_id'); candles.add_argument('--start', type=int, required=True); candles.add_argument('--end', type=int, required=True)
+    radar = sub.add_parser('radar'); radar.add_argument('--limit', type=int, default=10)
+    sub.add_parser('connect')
+    listed = sub.add_parser('platforms'); listed.add_argument('--name', default=None)
     sub.add_parser('halt')
     val=sub.add_parser('validate'); val.add_argument('--feed',required=True); val.add_argument('--output',default='results/validation');val.add_argument('--folds',type=int,default=3)
     request = sub.add_parser('call'); request.add_argument('--url',default='http://127.0.0.1:8080'); request.add_argument('--request',required=True); request.add_argument('--key',required=True)
@@ -42,12 +49,16 @@ def main():
             result = {'file':args.output,'data':'SYNTHETIC','bars':args.bars}
         elif args.command == 'contract':
             result = CONTRACT
-        elif args.command == 'collect':
-            result = asdict(collect())
-        elif args.command == 'inspect':
-            result = SolanaRPC().inspect(args.mint)
-        elif args.command == 'wallet':
-            result = SolanaRPC().wallet(args.address)
+        elif args.command == 'products':
+            result = Coinbase(HTTP()).products(args.type, args.limit)
+        elif args.command == 'candles':
+            result = Coinbase(HTTP()).candles(args.product_id, args.start, args.end)
+        elif args.command == 'radar':
+            result = MarketVision(HTTP()).radar(limit=args.limit)
+        elif args.command == 'connect':
+            result = connect_request()
+        elif args.command == 'platforms':
+            result = platforms(args.name)
         elif args.command == 'call':
             d = json.loads(Path(args.request).read_text())
             result = BackendClient(args.url).command(d['command'],d['args'],args.key)
@@ -62,9 +73,11 @@ def main():
                 print(json.dumps(result,indent=2,ensure_ascii=False,allow_nan=False))
                 return 0
             service = Service(cfg,args.db,args.agents,args.model,args.max_llm_calls)
+            if args.command == 'mcp':
+                return serve_mcp(service)
             if args.command == 'serve':
                 server = build_server(service,args.port)
-                print(json.dumps(dict(status='listening',host='127.0.0.1',port=server.server_port,chain='solana',execution='paper')),flush=True)
+                print(json.dumps(dict(status='listening',host='127.0.0.1',port=server.server_port,venue='coinbase',chain=cfg.chain,execution=cfg.execution)),flush=True)
                 try:
                     server.serve_forever()
                 except KeyboardInterrupt:
