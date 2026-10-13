@@ -1,12 +1,12 @@
-"""Read-only Solana market collectors used by paper mode.
+"""Read-only Coinbase market data plus read-only Solana account checks.
 
-No wallet signer, transaction builder, or transaction submission lives here.
+Paper mode never builds, signs, or submits a wallet transaction.
 """
 import os
 import time
-from urllib.parse import urlencode, quote
+from urllib.parse import quote, urlencode
 
-from .models import Candle, Snapshot, SOL, USDC, TOKEN_PROGRAM, MAINNET_GENESIS, pubkey
+from .models import Candle, Snapshot, SOL, TOKEN_PROGRAM, MAINNET_GENESIS, pubkey
 from .transport import HTTP, DataError
 
 
@@ -52,88 +52,147 @@ class SolanaRPC:
                     warnings=["RPC público e contas SPL; não classifica contas de pool/custódia."])
 
 
-class DexScreener:
-    """Read-only pool locator/current statistics, restricted to SOL/USDC on Solana."""
-    def __init__(self, http=None):
+class CoinbaseMarket:
+    """Coinbase Advanced Trade public spot data, restricted to Solana's native SOL mint."""
+    BASE = "https://api.coinbase.com/api/v3/brokerage/market"
+    PRODUCT_IDS = {"SOL-USD", "SOL-USDC"}
+    GRANULARITIES = {60: "ONE_MINUTE", 300: "FIVE_MINUTE", 900: "FIFTEEN_MINUTE"}
+
+    def __init__(self, http=None, product_id=None):
         self.http = http or HTTP(timeout=8, retries=0)
+        self.product_id = product_id or os.environ.get("COINBASE_PRODUCT_ID", "SOL-USDC")
+        if self.product_id not in self.PRODUCT_IDS:
+            raise ValueError("COINBASE_PRODUCT_ID deve ser SOL-USDC ou SOL-USD")
 
-    def market(self, mint=SOL):
-        pubkey(mint)
-        pairs = self.http.json(f"https://api.dexscreener.com/token-pairs/v1/solana/{mint}")
-        if not isinstance(pairs, list):
-            raise DataError("Resposta de pools inválida")
-        valid = [p for p in pairs if isinstance(p, dict) and p.get("chainId") == "solana"
-                 and p.get("baseToken", {}).get("address") == mint
-                 and p.get("quoteToken", {}).get("address") == USDC
-                 and p.get("pairAddress") and p.get("priceNative")
-                 and (p.get("liquidity") or {}).get("usd")]
-        if not valid:
-            raise DataError("Nenhuma pool SOL/USDC válida encontrada na Solana")
-        row = max(valid, key=lambda p: float(p["liquidity"]["usd"]))
-        price = float(row["priceNative"])
-        liquidity = float(row["liquidity"]["usd"])
-        volume = float((row.get("volume") or {}).get("h24", 0))
-        if min(price, liquidity) <= 0 or volume < 0:
-            raise DataError("Dados da pool inválidos")
-        trades = (row.get("txns") or {}).get("h1", {})
-        buys, sells = int(trades.get("buys", 0)), int(trades.get("sells", 0))
-        return dict(mint=mint, pool=row["pairAddress"], dex=row.get("dexId"),
-                    price=price, liquidity_usd=liquidity, volume_24h_usd=volume,
-                    buy_sell_imbalance=(buys-sells)/(buys+sells) if buys+sells else 0.0,
-                    source="dexscreener_solana_pool_usdc")
+    def _get(self, path, params=None):
+        url = f"{self.BASE}/{path}"
+        if params:
+            url += "?" + urlencode(params)
+        return self.http.json(url, headers={"Cache-Control": "no-cache"})
 
-
-class GeckoTerminal:
-    """On-chain DEX pool OHLCV. Public API is beta and may be rate limited."""
-    BASE = "https://api.geckoterminal.com/api/v2"
-
-    def __init__(self, http=None):
-        self.http = http or HTTP(timeout=8, retries=0)
-
-    def candles(self, pool, count=120, aggregate=1, now=None):
-        if not isinstance(pool, str) or not 20 <= len(pool) <= 64:
-            raise ValueError("Endereço de pool inválido")
-        if type(count) is not int or not 80 <= count <= 1000:
-            raise ValueError("count precisa estar entre 80 e 1000")
-        if type(aggregate) is not int or aggregate not in {1, 5, 15}:
+    def candles(self, mint=SOL, count=120, aggregate=900, now=None):
+        if pubkey(mint) != SOL:
+            raise DataError("Coinbase feed habilitado somente para o mint nativo SOL")
+        if type(count) is not int or not 80 <= count <= 350:
+            raise ValueError("count precisa estar entre 80 e 350")
+        if aggregate not in self.GRANULARITIES:
             raise ValueError("aggregate precisa ser 1, 5 ou 15 minutos")
-        query = urlencode({"aggregate": aggregate, "limit": count, "currency": "token", "token": "base"})
-        url = f"{self.BASE}/networks/solana/pools/{quote(pool, safe='')}/ohlcv/minute?{query}"
-        data = self.http.json(url, headers={"Accept": "application/json;version=20230203"})
-        try:
-            attrs = data["data"]["attributes"]
-            raw = attrs["ohlcv_list"]
-        except (TypeError, KeyError):
-            raise DataError("Resposta OHLCV GeckoTerminal inválida") from None
-        if not isinstance(raw, list):
-            raise DataError("Lista OHLCV GeckoTerminal inválida")
-        step = aggregate * 60
+        step = aggregate
         cutoff = int(time.time() if now is None else now)
+        end = cutoff // step * step
+        start = end - (count + 2) * step
+        data = self._get(f"products/{quote(self.product_id, safe='')}/candles", {
+            "start": start, "end": end, "granularity": self.GRANULARITIES[aggregate],
+            "limit": count + 2,
+        })
+        raw = data.get("candles") if isinstance(data, dict) else None
+        if not isinstance(raw, list):
+            raise DataError("Resposta Coinbase candles inválida")
         rows = []
-        for item in raw:
-            if not isinstance(item, list) or len(item) != 6:
-                raise DataError("Registro OHLCV GeckoTerminal inválido")
-            try:
-                ts = int(item[0])
+        try:
+            for item in raw:
+                ts = int(item["start"])
                 if ts + step > cutoff:
-                    continue  # never consume the still-open candle
-                rows.append(Candle(ts, float(item[1]), float(item[2]), float(item[3]),
-                                   float(item[4]), float(item[5]), mint=SOL))
-            except (ValueError, TypeError, OverflowError):
-                raise DataError("Valores OHLCV GeckoTerminal inválidos") from None
+                    continue
+                close = float(item["close"])
+                base_volume = float(item["volume"])
+                rows.append(Candle(ts, float(item["open"]), float(item["high"]),
+                                   float(item["low"]), close, base_volume * close, mint=SOL))
+        except (KeyError, TypeError, ValueError, OverflowError, IndexError):
+            raise DataError("Registro Coinbase candle inválido") from None
         rows.sort(key=lambda candle: candle.timestamp)
-        if not rows:
-            raise DataError("GeckoTerminal ainda não retornou candles fechados")
         if len(rows) > count:
             rows = rows[-count:]
+        if not rows:
+            raise DataError("Coinbase ainda não retornou candles fechados")
         if any(b.timestamp != a.timestamp + step for a, b in zip(rows, rows[1:])):
-            raise DataError("OHLCV contém lacunas; recusa replay com barras ausentes")
+            raise DataError("Coinbase candles contêm lacunas; replay recusado")
         return rows
 
+    def market(self, mint=SOL, candles=None, timeframe_seconds=900):
+        if pubkey(mint) != SOL:
+            raise DataError("Coinbase market data habilitado somente para o mint nativo SOL")
+        product = self._get(f"products/{quote(self.product_id, safe='')}")
+        if not isinstance(product, dict) or product.get("product_id") != self.product_id:
+            raise DataError("Produto Coinbase inválido")
+        if product.get("base_currency_id") not in {None, "SOL"} or product.get("quote_currency_id") not in {None, "USD", "USDC"}:
+            raise DataError("Produto Coinbase não representa SOL contra USD/USDC")
+        if product.get("is_disabled") is True or product.get("trading_disabled") is True:
+            raise DataError("Produto Coinbase desabilitado")
 
-def collect(mint=SOL, rpc=None, dex=None, market=None):
+        book = self._get("product_book", {"product_id": self.product_id, "limit": 50})
+        try:
+            pricebook = book["pricebook"]
+            bids, asks = pricebook["bids"], pricebook["asks"]
+            best_bid, best_ask = float(bids[0]["price"]), float(asks[0]["price"])
+        except (KeyError, TypeError, ValueError, IndexError):
+            raise DataError("Livro Coinbase inválido ou vazio") from None
+        if min(best_bid, best_ask) <= 0 or best_bid > best_ask:
+            raise DataError("Melhor bid/ask Coinbase inválido")
+        mid = (best_bid + best_ask) / 2
+        bid_depth = self._depth(bids, mid, lower=True)
+        ask_depth = self._depth(asks, mid, lower=False)
+        if min(bid_depth, ask_depth) <= 0:
+            raise DataError("Profundidade Coinbase insuficiente")
+
+        trade_data = self._get(f"products/{quote(self.product_id, safe='')}/ticker", {"limit": 100})
+        trades = trade_data.get("trades") if isinstance(trade_data, dict) else None
+        if not isinstance(trades, list) or not trades:
+            raise DataError("Trades Coinbase ausentes ou inválidos")
+        buy_notional = sell_notional = 0.0
+        try:
+            for trade in trades:
+                notional = float(trade["price"]) * float(trade["size"])
+                # Coinbase reports maker side. Reverse it to estimate taker aggression.
+                if trade["side"] == "SELL":
+                    buy_notional += notional
+                elif trade["side"] == "BUY":
+                    sell_notional += notional
+                else:
+                    raise ValueError
+        except (KeyError, TypeError, ValueError, OverflowError):
+            raise DataError("Trade Coinbase inválido") from None
+        imbalance = ((buy_notional - sell_notional) / (buy_notional + sell_notional)
+                     if buy_notional + sell_notional else 0.0)
+        try:
+            volume_base = float(product["volume_24h"])
+            product_price = float(product.get("price", mid))
+        except (KeyError, TypeError, ValueError, OverflowError):
+            raise DataError("Volume/preço Coinbase inválido") from None
+        if min(volume_base, product_price) < 0 or product_price == 0:
+            raise DataError("Volume/preço Coinbase inválido")
+        # Coinbase volume_24h is base-asset volume; convert to quote notional.
+        volume_quote = volume_base * product_price
+        if (candles and timeframe_seconds <= 900
+                and len(candles) >= 86400 // timeframe_seconds):
+            # Prefer exact quote notional only when the supplied bars cover a full day.
+            day_ago = int(time.time()) - 86400
+            if candles[0].timestamp <= day_ago:
+                volume_quote = sum(bar.volume for bar in candles if bar.timestamp >= day_ago)
+        return dict(mint=mint, product_id=self.product_id, price=mid,
+                    bid=best_bid, ask=best_ask,
+                    liquidity_usd=bid_depth + ask_depth, volume_24h_usd=volume_quote,
+                    buy_sell_imbalance=imbalance, source="coinbase_advanced_sol_spot")
+
+    @staticmethod
+    def _depth(levels, mid, lower):
+        depth = 0.0
+        for level in levels:
+            try:
+                price, size = float(level["price"]), float(level["size"])
+            except (KeyError, TypeError, ValueError, OverflowError):
+                raise DataError("Nível do livro Coinbase inválido") from None
+            if price <= 0 or size < 0:
+                raise DataError("Nível do livro Coinbase inválido")
+            if (price >= mid * .99) if lower else (price <= mid * 1.01):
+                depth += price * size
+        return depth
+
+
+def collect(mint=SOL, rpc=None, market=None):
     r = (rpc or SolanaRPC()).inspect(mint)
-    market = market or (dex or DexScreener()).market(mint)
+    if not market:
+        raise DataError("Dados atuais da Coinbase são obrigatórios")
     observed_at = int(time.time())
     return Snapshot(timestamp=observed_at, mint=mint, price=market["price"],
                     liquidity_usd=market["liquidity_usd"], volume_24h_usd=market["volume_24h_usd"],
@@ -142,5 +201,5 @@ def collect(mint=SOL, rpc=None, dex=None, market=None):
                     top10_account_share=r["top10_account_share"], token_program=r["token_program"],
                     account_checked=True, cluster_verified=True, source=market["source"], slot=r["slot"],
                     warnings=tuple(r["warnings"] + [
-                        "OHLCV histórico vem de GeckoTerminal; liquidez/volume são observações atuais.",
-                        "Paper fills estimam taxa/slippage; não são execução de rota Jupiter."]))
+                        "Mercado, preço, livro e trades vêm da Coinbase; segurança do mint vem de RPC Solana.",
+                        "Paper fills usam o midpoint Coinbase mais custos configurados; não são ordens ou cotação executável."]))

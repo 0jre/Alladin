@@ -2,8 +2,8 @@
 
 Backend Python sem UI, só biblioteca padrão (Python 3.11+). Não adicionar dependências.
 Alladin roda exclusivamente na Solana mainnet e em spot paper. Não conecta carteiras,
-não guarda chaves, não assina nem envia transações. O ciclo paper-live consome OHLCV
-GeckoTerminal, pool/mark DexScreener e RPC Solana somente leitura; falha de dado bloqueia
+não guarda chaves, não assina nem envia transações. O ciclo paper-live consome candles,
+livro, trades e estatísticas públicas da Coinbase, mais RPC Solana somente leitura; falha de dado bloqueia
 novos ciclos e fills. Replay sintético serve apenas para testes do motor, nunca como
 prova de rentabilidade ou sessão de negociação.
 

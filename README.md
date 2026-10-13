@@ -4,11 +4,11 @@ Backend Python de pesquisa e paper trading **exclusivamente na Solana mainnet**,
 
 ## O que significa paper-live
 
-`paper-live` usa candles recentes de uma pool SOL/USDC da Solana via GeckoTerminal, marcação/liquidez/volume via DexScreener e verificações de mint via RPC somente leitura. O primeiro comando só aquece os indicadores; os próximos processam cada barra fechada uma vez. Barras faltantes, feed atrasado, snapshot stale ou erro de provedor interrompem o ciclo sem preencher retroativamente.
+`paper-live` usa candles fechados, livro, trades recentes e volume de 24 horas do mercado spot SOL-USDC da Coinbase Advanced Trade. O par pode ser definido como `SOL-USD` por `COINBASE_PRODUCT_ID`. O RPC Solana é usado apenas para confirmar mainnet e dados do mint. O primeiro comando só aquece os indicadores; os próximos processam cada barra fechada uma vez. Barras faltantes, feed atrasado, snapshot stale ou erro de provedor interrompem o ciclo sem preencher retroativamente. A negociação acompanha o ativo SOL da Solana, enquanto os preços refletem o mercado centralizado da Coinbase.
 
-O motor quantitativo ou o conselho LLM usa os mesmos sinais, filtros e limites de risco configurados para o fluxo paper do Alladin. O saldo inicial padrão é **20 USDC**. As entradas e saídas são registradas localmente contra a marca atual da pool, somando as taxas/slippage configuradas. Isso não é uma ordem roteada, uma cotação executável nem garantia de que um swap real teria esse preço ou fill. Não use os resultados como evidência de rentabilidade.
+O motor quantitativo ou o conselho LLM usa os mesmos sinais, filtros e limites de risco configurados para o fluxo paper do Alladin. O saldo inicial padrão é **20 USDC**. As entradas e saídas são registradas localmente contra o midpoint atual da Coinbase, somando as taxas/slippage configuradas. Isso não é uma ordem Coinbase, uma cotação executável nem garantia de que um fill real teria esse preço. Não use os resultados como evidência de rentabilidade.
 
-O endpoint público RPC tem limites e não é recomendado pela Solana para produção. GeckoTerminal também pode cachear ou limitar respostas. Para serviço contínuo, configure provedores estáveis, supervisão, alertas e validação econômica independente.
+Os endpoints públicos da Coinbase podem cachear ou limitar respostas; snapshots usam `Cache-Control: no-cache`. O RPC público tem limites e não é recomendado pela Solana para produção. Para serviço contínuo, configure provedores estáveis, supervisão, alertas e validação econômica independente.
 
 ## Iniciar uma sessão paper
 
@@ -65,9 +65,9 @@ MCP stdio está disponível com `python3 -m alladin mcp` e oferece os mesmos com
 
 O motor calcula indicadores causais (EMAs, RSI, ATR, ADX, MACD, Bollinger, VWAP aproximado, eficiência direcional, momentum e volume relativo), compara estratégias de tendência/breakout/reversão e passa propostas pelo risco determinístico. O risco considera stops, custos estimados, liquidez, volume, exposição, perdas diárias, drawdown e qualidade/frescor do snapshot. Spot não vende a descoberto.
 
-Em `paper-live`, a decisão usa candle já fechado e evidência de mercado atual; o fill paper usa a marca atual da pool mais custos configurados. O caminho `ingest` preserva a semântica histórica do replay: decisão na barra N e entrada elegível na abertura de N+1 com revalidação. Os dois fluxos não devem ser misturados na mesma sessão.
+Em `paper-live`, a decisão usa candle já fechado e evidência atual do livro/trades Coinbase; o fill paper usa o midpoint atual mais custos configurados. O caminho `ingest` preserva a semântica histórica do replay: decisão na barra N e entrada elegível na abertura de N+1 com revalidação. Os dois fluxos não devem ser misturados na mesma sessão.
 
-O mark de um agregador não garante execução. O simulador não mede impacto real de ordem, profundidade roteável, MEV, falhas de RPC, prioridade, congestionamento, taxa de rede ou diferenças entre a pool selecionada e a rota real. Perp e live execution estão desativados. Testes com fixtures verificam o software, não rentabilidade nem resposta ao mercado real.
+O midpoint de uma exchange não garante execução em uma DEX Solana. O simulador não mede impacto real de ordem, profundidade roteável, MEV, falhas de RPC, prioridade, congestionamento, taxa de rede ou diferenças entre o livro Coinbase e uma rota on-chain. Perp e live execution estão desativados. Testes com fixtures verificam o software, não rentabilidade nem resposta ao mercado real.
 
 ## Verificação
 

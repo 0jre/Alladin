@@ -4,8 +4,8 @@ Alladin é um backend Python de análise e paper trading para Solana mainnet. O 
 
 ## Caminho de mercado paper
 
-1. `DexScreener` localiza e marca a pool SOL/USDC mais líquida observada para o mint configurado.
-2. `GeckoTerminal` fornece candles fechados da pool; candles abertos, lacunas e atrasos são recusados.
+1. `CoinbaseMarket` coleta candles fechados do produto SOL-USDC/SOL-USD, o livro, trades recentes e volume de 24 horas pelos endpoints públicos Coinbase Advanced Trade.
+2. O provedor recusa candles abertos, lacunas, produtos que não sejam SOL e snapshots sem bid/ask ou dados de trade válidos.
 3. `SolanaRPC` verifica mainnet e os dados SPL do mint por métodos de leitura.
 4. O motor calcula features e estratégias, o conselho escolhe LONG/HOLD/CLOSE e o risco determina se há aprovação e tamanho.
 5. `PaperBroker` atualiza a carteira local e o SQLite registra resposta idempotente e evento auditável.
@@ -27,6 +27,6 @@ O aquecimento não opera. Se o processo perder barras sem uma posição aberta, 
 
 ## Execução e limites
 
-`Config` aceita apenas `chain=solana`, `execution=paper` e `allowed_markets=["spot"]`. A lógica de decisão e risco é compartilhada pelo ciclo paper. O fill de `paper_tick` usa a marca atual da pool mais fee/slippage definidos em configuração; não é uma cotação de rota nem replica impacto/execução de swap.
+`Config` aceita apenas `chain=solana`, `execution=paper` e `allowed_markets=["spot"]`. A lógica de decisão e risco é compartilhada pelo ciclo paper. O fill de `paper_tick` usa o midpoint Coinbase mais fee/slippage definidos em configuração; não é uma cotação de rota nem replica impacto/execução de swap.
 
-As chamadas externas são feitas antes da transação de escrita. A mutação, a resposta idempotente e o evento entram juntos na transação SQLite. O feed público pode sofrer cache, throttling e falhas; gaps nunca são sintetizados. O RPC público não é um endpoint de produção. Consulte o README para comandos e operação.
+As chamadas externas são feitas antes da transação de escrita. A mutação, a resposta idempotente e o evento entram juntos na transação SQLite. O feed público Coinbase pode sofrer cache, throttling e falhas; gaps nunca são sintetizados. O RPC público não é um endpoint de produção. Consulte o README para comandos e operação.

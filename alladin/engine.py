@@ -8,7 +8,7 @@ from .risk import approve, update_breakers, Approval
 from .broker import PaperBroker
 from .storage import Store, canonical
 from .universe import seed_primary, classify_snapshot
-from .providers import DexScreener, GeckoTerminal, collect
+from .providers import CoinbaseMarket, collect
 
 class Service:
     """One persistent state machine, serialized by SQLite write transactions."""
@@ -245,8 +245,9 @@ class Service:
         # Read the last committed bar to avoid the RPC checks when no new candle exists.
         with self.store.connect() as db:
             state = self._load(db)
-        market = DexScreener().market(self.cfg.mint)
-        candles = GeckoTerminal().candles(market['pool'], count=120, aggregate=step//60)
+        provider = CoinbaseMarket()
+        candles = provider.candles(self.cfg.mint, count=120, aggregate=step)
+        market = provider.market(self.cfg.mint, candles=candles, timeframe_seconds=step)
         snap = None
         if state['last_timestamp'] is not None:
             next_ts = state['last_timestamp']+step
@@ -278,7 +279,7 @@ class Service:
                 state['bars_processed'] = len(history)
                 state['last_digest'] = hashlib.sha256(canonical(state['history']).encode()).hexdigest()
                 self.store.save(db,state)
-                self.store.event(db,int(time.time()),'warmup',dict(source='geckoterminal_solana_pool',
+                self.store.event(db,int(time.time()),'warmup',dict(source='coinbase_advanced_sol_spot',
                                   bars=len(history),last_timestamp=history[-1].timestamp,
                                   last_price=history[-1].close))
                 return dict(result='warmed_up',bars=len(history),last_bar=history[-1].timestamp,
@@ -304,7 +305,7 @@ class Service:
                 state['bars_processed'] = max(state['bars_processed'],self.cfg.warmup_bars)
                 self.store.save(db,state)
                 self.store.event(db,int(time.time()),'resync_warmup',dict(
-                    source='geckoterminal_solana_pool',bars=len(history),
+                    source='coinbase_advanced_sol_spot',bars=len(history),
                     skipped_bars=max(0,(history[-1].timestamp-next_ts)//step+1),
                     last_timestamp=history[-1].timestamp,reason='gap_without_open_position'))
                 return dict(result='resynchronized',bars=len(history),last_bar=history[-1].timestamp,
@@ -437,7 +438,7 @@ class Service:
         """Forward-only spot paper cycle using current Solana pool observations."""
         if b.mint != self.cfg.mint or s.mint != self.cfg.mint or b.chain != 'solana' or s.chain != 'solana':
             raise ValueError('paper_tick aceita somente o mint Solana configurado')
-        if s.source != 'dexscreener_solana_pool_usdc' or not s.account_checked or not s.cluster_verified:
+        if s.source != 'coinbase_advanced_sol_spot' or not s.account_checked or not s.cluster_verified:
             raise ValueError('Snapshot não veio de fontes Solana verificadas')
         now = int(time.time())
         if s.timestamp > now+5 or now-s.timestamp > self.cfg.max_snapshot_age_seconds:

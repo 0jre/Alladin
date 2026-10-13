@@ -30,9 +30,9 @@ CONTRACT = {
     'agent_flow':['paper_tick','analyze/evaluate','status/audit'],
     'mcp':{'command':'python -m alladin mcp','transport':'stdio'},
     'notes':['Backend Python; Solana mainnet only; spot paper only.',
-             'paper_tick reads GeckoTerminal OHLCV, DexScreener pool data and read-only Solana RPC.',
+             'paper_tick reads Coinbase Advanced Trade public SOL spot market data and read-only Solana RPC.',
              'No wallet connection, signer, transaction builder or transaction submission.',
-             'Paper fills use current pool marks plus configured cost assumptions; they are not routed quotes.',
+             'Paper fills use the current Coinbase midpoint plus configured cost assumptions; they are not routed quotes.',
              'ingest automatically invokes the council; synthetic replay is not a live-market performance test.']}
 
 def build_server(service,port=8080,token=None):

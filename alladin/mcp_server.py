@@ -28,7 +28,7 @@ def tools():
         _tool('alladin_status', 'Carteira paper, posições, pendência e bloqueios. Não envia ordem.', {}),
         _tool('alladin_audit', 'Eventos recentes de decisão e execução.', {'limit': {'type': 'integer'}}),
         _tool('alladin_contract', 'Contrato de comandos do Alladin.', {}),
-        _tool('paper_tick', 'Coleta candles GeckoTerminal e snapshot RPC/DEX da Solana; aquece com OHLCV real e processa no máximo uma barra paper spot. Não acessa carteira nem envia transação.', {}),
+        _tool('paper_tick', 'Coleta candles, livro e trades públicos da Coinbase mais snapshot RPC somente leitura da Solana; aquece com OHLCV real e processa no máximo uma barra paper spot. Não acessa carteira nem envia transação.', {}),
         _tool('ingest', 'Barra fechada e snapshot. O conselho decide; a entrada paper sai na barra seguinte.', {'candle': {'type': 'object'}, 'snapshot': {'type': 'object'}}, ('candle', 'snapshot')),
         _tool('analyze', 'Analisa o que está gravado. Não agenda operação.', optional),
         _tool('evaluate', 'Valida risco de uma proposta. Não executa.', {'proposal': {'type': 'object'}}, ('proposal',)),

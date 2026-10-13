@@ -7,45 +7,50 @@ from unittest.mock import patch
 
 from alladin.engine import Service
 from alladin.models import Candle, Config, Proposal, Snapshot, SOL
-from alladin.providers import DexScreener, GeckoTerminal
+from alladin.providers import CoinbaseMarket
 from alladin.risk import security_checks
 from alladin.transport import DataError
 
 
 class ProviderTests(unittest.TestCase):
-    def test_dexscreener_filters_chain_and_exact_usdc_pool(self):
-        class Http:
-            def json(self, *args, **kwargs):
-                return [
-                    dict(chainId='ethereum', pairAddress='E'*32, baseToken={'address': SOL},
-                         quoteToken={'address':'wrong'}, priceNative='1', liquidity={'usd': 99999999}),
-                    dict(chainId='solana', pairAddress='S'*32, baseToken={'address': SOL},
-                         quoteToken={'address':'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'},
-                         priceNative='150', liquidity={'usd': 1000000}, volume={'h24':5000000}),
-                ]
-        data = DexScreener(Http()).market(SOL)
-        self.assertEqual(data['price'],150)
-        self.assertEqual(data['source'],'dexscreener_solana_pool_usdc')
-
-    def test_gecko_filters_open_bar_and_rejects_gaps(self):
+    def test_coinbase_filters_open_bar_and_rejects_gaps(self):
         now=1800000000
         class Http:
             def json(self,*args,**kwargs):
-                return {'data':{'attributes':{'ohlcv_list':[
-                    [now-180,100,102,99,101,2000],
-                    [now-120,101,103,100,102,2200],
-                    [now-60,102,104,101,103,2400],
-                    [now,103,105,102,104,2600],
-                ]}}}
-        bars=GeckoTerminal(Http()).candles('S'*32,count=80,aggregate=1,now=now)
+                return {'candles':[
+                    {'start':now-180,'open':100,'high':102,'low':99,'close':101,'volume':20},
+                    {'start':now-120,'open':101,'high':103,'low':100,'close':102,'volume':22},
+                    {'start':now-60,'open':102,'high':104,'low':101,'close':103,'volume':24},
+                    {'start':now,'open':103,'high':105,'low':102,'close':104,'volume':26},
+                ]}
+        bars=CoinbaseMarket(Http()).candles(SOL,count=80,aggregate=60,now=now)
         self.assertEqual([b.timestamp for b in bars],[now-180,now-120,now-60])
+        self.assertEqual(bars[0].volume,2020)
         class Gap(Http):
             def json(self,*args,**kwargs):
-                return {'data':{'attributes':{'ohlcv_list':[
-                    [now-180,100,102,99,101,2000],[now-60,102,104,101,103,2400]
-                ]}}}
+                return {'candles':[
+                    {'start':now-180,'open':100,'high':102,'low':99,'close':101,'volume':20},
+                    {'start':now-60,'open':102,'high':104,'low':101,'close':103,'volume':24},
+                ]}
         with self.assertRaises(DataError):
-            GeckoTerminal(Gap()).candles('S'*32,count=80,aggregate=1,now=now)
+            CoinbaseMarket(Gap()).candles(SOL,count=80,aggregate=60,now=now)
+
+    def test_coinbase_market_uses_public_book_depth_and_taker_imbalance(self):
+        class Http:
+            def json(self,url,**kwargs):
+                if url.endswith('/products/SOL-USDC'):
+                    return {'product_id':'SOL-USDC','base_currency_id':'SOL','quote_currency_id':'USDC',
+                            'volume_24h':'100','price':'150','is_disabled':False}
+                if '/product_book?' in url:
+                    return {'pricebook':{'bids':[{'price':'149.9','size':'10'}],
+                                         'asks':[{'price':'150.1','size':'10'}]}}
+                return {'trades':[{'price':'150','size':'2','side':'SELL'},
+                                  {'price':'150','size':'1','side':'BUY'}]}
+        data=CoinbaseMarket(Http()).market(SOL)
+        self.assertEqual(data['price'],150)
+        self.assertAlmostEqual(data['buy_sell_imbalance'],1/3)
+        self.assertEqual(data['liquidity_usd'],3000)
+        self.assertEqual(data['source'],'coinbase_advanced_sol_spot')
 
     def test_perp_not_approved_without_verified_market(self):
         cfg=Config(allowed_markets=('spot',))
@@ -64,32 +69,34 @@ class LivePaperTests(unittest.TestCase):
         now=(now//60)*60+5
         first=(now//60)*60-81*60
         bars=[Candle(first+i*60,100,101,99,100,10000) for i in range(81)]
-        market=dict(pool='P'*32)
+        market=dict(price=100,liquidity_usd=10_000_000,volume_24h_usd=50_000_000,
+                    buy_sell_imbalance=0,source='coinbase_advanced_sol_spot')
         class FixedCouncil:
             mode='rules'
             def decide(self,*args):
                 return Proposal('LONG','spot',.8,.02,.06,24,'test candidate','trend_following'),{'mode':'fixture'}
         svc=Service(Config(initial_usdc=250,timeframe_seconds=60,allowed_markets=('spot',)),
                     Path(self.temp.name)/'paper.sqlite',council=FixedCouncil())
-        class Dex:
-            def market(self,mint):return market
-        class Gecko:
-            def candles(self,*args,**kwargs):return bars[:80] if len(calls)==0 else bars
-        calls=[]
+        class FakeCoinbase:
+            calls=0
+            def __init__(self,*args):pass
+            def candles(self,*args,**kwargs):
+                type(self).calls+=1
+                return bars[:80] if type(self).calls==1 else bars
+            def market(self,*args,**kwargs):return market
         snap=Snapshot(timestamp=now,mint=SOL,price=100,liquidity_usd=10_000_000,
                       volume_24h_usd=50_000_000,account_checked=True,cluster_verified=True,
-                      source='dexscreener_solana_pool_usdc')
-        with patch('alladin.engine.DexScreener',Dex), patch('alladin.engine.GeckoTerminal',Gecko), \
+                      source='coinbase_advanced_sol_spot')
+        with patch('alladin.engine.CoinbaseMarket',return_value=FakeCoinbase(bars,market)), \
              patch('alladin.engine.collect',return_value=snap), patch('alladin.engine.time.time',return_value=now):
             warm=svc.command('paper_tick',{},'warmup')
             self.assertEqual(warm['result'],'warmed_up')
             self.assertEqual(svc.status()['closed_trades'],0)
             self.assertEqual(svc.status()['positions'],[])
-            calls.append(1)
             tick=svc.command('paper_tick',{},'bar-1')
         self.assertEqual(tick['result'],'processed')
         self.assertTrue(any(event['event']=='OPEN' for event in tick['events']))
-        self.assertEqual(tick['decision']['market_data']['source'],'dexscreener_solana_pool_usdc')
+        self.assertEqual(tick['decision']['market_data']['source'],'coinbase_advanced_sol_spot')
         self.assertFalse(any('signature' in event for event in tick['events']))
 
     def test_paper_tick_rejects_perp_configuration_before_collection(self):
@@ -107,9 +114,11 @@ class LivePaperTests(unittest.TestCase):
             def candles(self,*args,**kwargs):
                 type(self).calls+=1
                 return bars[:80] if type(self).calls==1 else bars
-        class Dex:
-            def market(self,mint):return dict(pool='P'*32)
-        with patch('alladin.engine.DexScreener',Dex), patch('alladin.engine.GeckoTerminal',Sequence), \
+        market=dict(price=100,liquidity_usd=10_000_000,volume_24h_usd=50_000_000,
+                    buy_sell_imbalance=0,source='coinbase_advanced_sol_spot')
+        class FakeCoinbase(Sequence):
+            def market(self,*args,**kwargs):return market
+        with patch('alladin.engine.CoinbaseMarket',FakeCoinbase), \
              patch('alladin.engine.time.time',return_value=now):
             warmed=svc.command('paper_tick',{},'warm-gap')
             self.assertEqual(warmed['result'],'warmed_up')
