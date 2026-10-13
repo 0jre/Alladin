@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "alladin"
+version = "0.3.0"
+requires-python = ">=3.11"
+description = "Headless Solana-only multi-agent paper trading research backend"
+dependencies = []
+
+[project.scripts]
+alladin = "alladin.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["alladin*"]

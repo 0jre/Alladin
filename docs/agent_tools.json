@@ -1,0 +1,24 @@
+[
+  {
+    "type": "function",
+    "name": "solana_backend_status",
+    "description": "Read the Solana PAPER portfolio, open positions, pending decision and circuit breakers from GET /v1/status.",
+    "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": false},
+    "strict": true
+  },
+  {
+    "type": "function",
+    "name": "solana_backend_command",
+    "description": "Call POST /v1/commands on the configured authenticated Solana PAPER backend. The backend validates command arguments. Never executes arbitrary shell commands or signs a transaction. Supply a unique idempotency key per logical request; reuse the same key when retrying.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "command": {"type": "string", "enum": ["collect", "inspect", "wallet", "quote", "ingest", "analyze", "evaluate", "halt", "finalize"]},
+        "args": {"type": "object", "description": "Arguments exactly matching GET /v1/contract; use empty object for commands with no arguments."},
+        "idempotency_key": {"type": "string"}
+      },
+      "required": ["command", "args", "idempotency_key"]
+    },
+    "strict": false
+  }
+]

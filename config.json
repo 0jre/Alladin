@@ -1,0 +1,13 @@
+{
+  "chain": "solana",
+  "execution": "paper",
+  "timeframe_seconds": 900,
+  "initial_usdc": 10000,
+  "risk_per_trade": 0.003,
+  "max_position_fraction": 0.15,
+  "max_gross_fraction": 0.30,
+  "max_net_fraction": 0.20,
+  "max_daily_loss": 0.02,
+  "max_drawdown": 0.06,
+  "allowed_markets": ["spot", "perp"]
+}
