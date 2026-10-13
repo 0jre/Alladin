@@ -77,7 +77,8 @@ def main():
                             delay = args.poll_seconds
                         except DataError as exc:
                             failures += 1
-                            delay = min(300,max(args.poll_seconds,10)*(2**min(failures-1,4)))
+                            delay = max(min(300,max(args.poll_seconds,10)*(2**min(failures-1,4))),
+                                        getattr(exc,'retry_after',0) or 0)
                             result = {'result':'provider_unavailable','error':str(exc),'retry_seconds':delay,
                                       'portfolio_unchanged':True}
                         print(json.dumps(result,ensure_ascii=False,allow_nan=False),flush=True)

@@ -108,7 +108,10 @@ def build_server(service,port=8080,token=None):
             except (ValueError,TypeError,KeyError) as e:
                 self.send_json(400,{'error':'invalid_request','detail':str(e)[:200]})
             except DataError as e:
-                self.send_json(503,{'error':'provider_unavailable','detail':str(e)[:200]})
+                body={'error':'provider_unavailable','detail':str(e)[:200]}
+                if getattr(e,'retry_after',None) is not None:
+                    body['retry_after_seconds']=e.retry_after
+                self.send_json(503,body)
             except Exception:
                 self.send_json(500,{'error':'internal_error'})
             finally:

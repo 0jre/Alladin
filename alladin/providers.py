@@ -14,7 +14,7 @@ class SolanaRPC:
     ALLOWED = {"getGenesisHash", "getAccountInfo", "getTokenSupply", "getTokenLargestAccounts"}
 
     def __init__(self, http=None, url=None):
-        self.http = http or HTTP(timeout=8, retries=0)
+        self.http = http or HTTP(timeout=8, retries=2)
         self.url = url or os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
 
     def call(self, method, params=None):
@@ -64,7 +64,7 @@ class CoinbaseMarket:
                      3600: "ONE_HOUR"}
 
     def __init__(self, http=None, product_id=None):
-        self.http = http or HTTP(timeout=8, retries=0)
+        self.http = http or HTTP(timeout=8, retries=2)
         self.product_id = product_id or "SOL-USDC"
         if self.product_id not in self.PRODUCT_IDS:
             raise ValueError("Somente o produto Coinbase SOL-USDC é permitido")

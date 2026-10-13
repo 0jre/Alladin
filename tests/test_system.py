@@ -1,4 +1,5 @@
 import copy
+import io
 import json
 import math
 import os
@@ -19,7 +20,40 @@ from alladin.agents import Council,OpenAIJSON,validate_report
 from alladin.engine import Service
 from alladin.research import demo_feed,export
 from alladin.server import build_server
-from alladin.transport import DataError
+from alladin.transport import DataError,HTTP
+
+class Transport429Tests(unittest.TestCase):
+    def test_retries_upstream_429_after_retry_after(self):
+        sleeps=[]
+        calls=[]
+        def open_request(request,timeout):
+            calls.append(1)
+            if len(calls)==1:
+                raise urllib.error.HTTPError(request.full_url,429,'rate limited',
+                                             {'Retry-After':'2'},io.BytesIO(b''))
+            return io.BytesIO(b'{"ok":true}')
+        with patch('alladin.transport.urllib.request.build_opener') as build:
+            build.return_value.open.side_effect=open_request
+            result=HTTP(retries=2,retry_cap=8,sleeper=sleeps.append,
+                        random_value=lambda:0).json('https://api.example.test/data')
+        self.assertEqual(result,{'ok':True})
+        self.assertEqual(len(calls),2)
+        self.assertEqual(sleeps,[2])
+
+    def test_persistent_upstream_429_becomes_generic_data_error(self):
+        calls=[]
+        def open_request(request,timeout):
+            calls.append(1)
+            raise urllib.error.HTTPError(request.full_url,429,'rate limited',
+                                         {'Retry-After':'20'},io.BytesIO(b''))
+        with patch('alladin.transport.urllib.request.build_opener') as build:
+            build.return_value.open.side_effect=open_request
+            with self.assertRaises(DataError) as raised:
+                HTTP(retries=3,retry_cap=8,sleeper=lambda _:self.fail('must not sleep'),
+                     random_value=lambda:0).json('https://api.example.test/data')
+        self.assertEqual(len(calls),1)
+        self.assertEqual(raised.exception.retry_after,20)
+        self.assertNotIn('429',str(raised.exception))
 
 def feature_fixture():
     return dict(ready=True,price=100,regime='trend',cvar95_bar=.01,atr=1,
@@ -319,5 +353,15 @@ class HTTPTests(unittest.TestCase):
         with self.request('/v1/commands',body) as r:c=json.load(r)
         self.assertEqual(a,c)
         self.assertEqual(self.service.status()['bars_processed'],1)
+    def test_provider_throttle_never_leaks_as_429(self):
+        with patch('alladin.server.execute',side_effect=DataError(
+                'Fonte de dados temporariamente indisponível',retry_after=5)):
+            with self.assertRaises(urllib.error.HTTPError) as raised:
+                self.request('/v1/commands',{'command':'paper_tick','args':{}})
+        self.assertEqual(raised.exception.code,503)
+        body=json.loads(raised.exception.read())
+        self.assertEqual(body['error'],'provider_unavailable')
+        self.assertEqual(body['retry_after_seconds'],5)
+        self.assertNotIn('429',json.dumps(body))
 
 if __name__=='__main__':unittest.main()

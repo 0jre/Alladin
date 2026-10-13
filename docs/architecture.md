@@ -10,7 +10,7 @@ Alladin é um backend Python de análise e paper trading para Solana mainnet. O 
 4. O motor calcula features e estratégias, o conselho escolhe LONG/HOLD/CLOSE e o risco determina se há aprovação e tamanho.
 5. `PaperBroker` atualiza a carteira local e o SQLite registra resposta idempotente e evento auditável.
 
-O aquecimento não opera. Se o processo perder barras sem uma posição aberta, o histórico é reaquececido com as barras mais recentes, sem fills retroativos. Com posição ou ordem pendente, um gap interrompe o fluxo para reconciliação. Um HTTP 429 ou erro de fonte deixa o estado da carteira intacto; `paper-live` tenta novamente com backoff.
+O aquecimento não opera. Se o processo perder barras sem uma posição aberta, o histórico é reaquececido com as barras mais recentes, sem fills retroativos. Com posição ou ordem pendente, um gap interrompe o fluxo para reconciliação. Erros transitórios de fonte deixam a carteira intacta; o transporte faz retries limitados respeitando `Retry-After`, e `paper-live` agenda a próxima tentativa com backoff. O HTTP do Alladin traduz falhas persistentes de fonte em 503, nunca repassa o status upstream.
 
 ## Camadas
 
