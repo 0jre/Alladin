@@ -9,6 +9,7 @@ import hashlib
 import os
 import secrets
 import threading
+import time
 from urllib.parse import urlencode, urlsplit
 from .transport import DataError
 
@@ -24,6 +25,13 @@ TRADE_SCOPE = 'wallet:trades:create'
 _LOCK = threading.Lock()
 _PENDING = {}
 _SESSION = {'connected': False, 'scopes': []}
+_PENDING_TTL_SECONDS = 3600
+
+
+def _prune_pending(now=None):
+    cutoff = (now or time.time()) - _PENDING_TTL_SECONDS
+    for state in [s for s, p in _PENDING.items() if p.get('created', 0) < cutoff]:
+        _PENDING.pop(state, None)
 
 
 def _redirect_ok(value):
@@ -69,7 +77,9 @@ def connect_request(scopes=None, trade=False):
         'code_challenge_method': 'S256',
     })
     with _LOCK:
-        _PENDING[state] = {'verifier': verifier, 'redirect': redirect, 'scopes': list(dict.fromkeys(selected))}
+        _prune_pending()
+        _PENDING[state] = {'verifier': verifier, 'redirect': redirect, 'scopes': list(dict.fromkeys(selected)),
+                           'created': time.time()}
     return {
         'type': 'action_request',
         'action': 'open_url',
@@ -117,6 +127,7 @@ def complete(code, state, http):
     if not secret or not client_id:
         raise DataError('Troca OAuth sem client secret no processo')
     with _LOCK:
+        _prune_pending()
         pending = _PENDING.pop(state, None)
     if pending is None:
         raise ValueError('State OAuth desconhecido')

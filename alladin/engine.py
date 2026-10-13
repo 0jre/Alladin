@@ -18,13 +18,13 @@ class Service:
         self.quoter, self.signer = quoter, signer
         self.fingerprint = hashlib.sha256(canonical(asdict(cfg)).encode()).hexdigest()
     def _ensure(self,state):
-        state.setdefault('series',{})
-        state.setdefault('pending_book',{})
-        state.setdefault('blocked_mints',{})
-        state.setdefault('llm_calls',0)
-        state.setdefault('memory',[])
-        state.setdefault('shadow_gaps',[])
-        state.setdefault('universe',{})
+        for key,default in [('series',{}),('pending_book',{}),('blocked_mints',{}),
+                            ('universe',{}),('memory',[]),('shadow_gaps',[]),
+                            ('curve',[]),('history',[]),('llm_calls',0),
+                            ('bars_processed',0),('pending',None),('snapshot',None),
+                            ('last_timestamp',None),('last_digest',None),
+                            ('last_price',None),('last_decision',None)]:
+            state.setdefault(key,default)
         if self.cfg.mint not in state['universe']:
             state['universe'][self.cfg.mint] = seed_primary(self.cfg.mint)
         return state
@@ -201,6 +201,9 @@ class Service:
             broker.trail(b.close,f['atr'],b.mint)
         if slot['bars_processed']+1 < self.cfg.warmup_bars:
             p,audit = replace(Proposal(thesis='Aquecimento obrigatório'),mint=b.mint),{'gate':'warmup','mode':self.council.mode}
+        elif inst['status'] != 'negotiable':
+            # Watched mints only collect features; the council is not consulted.
+            p,audit = replace(Proposal(thesis='Mint vigiado, ainda não negociável'),mint=b.mint),{'gate':'watched_only','mode':self.council.mode}
         else:
             p,audit = self._decide(state,f,s,book,end)
         a = self._apply_shadow(state,p,approve(p,f,s,book,self.cfg,end,instrument=inst),b.close)
@@ -231,15 +234,27 @@ class Service:
         with self.store.connect() as db:
             state = self._load(db)
         book = Portfolio.restore(state['portfolio'])
-        price = state['last_price'] or 0
-        return dict(chain=self.cfg.chain,venue='coinbase',execution=self.cfg.execution,asset='SOL/USDC',agent_mode=self.council.mode,
+        marks = {}
+        if state.get('last_price') is not None:
+            marks[self.cfg.mint] = state['last_price']
+        for mint,series in state.get('series',{}).items():
+            if series.get('last_price') is not None:
+                marks[mint] = series['last_price']
+        # Per-mint marks: a scalar price would misprice positions of other mints.
+        price = marks if marks else 0
+        client_calls = getattr(getattr(self.council,'client',None),'calls',0)
+        return dict(chain=self.cfg.chain,venue='coinbase',execution=self.cfg.execution,asset=f'{self.cfg.mint}/USDC',agent_mode=self.council.mode,
                     bars_processed=state['bars_processed'],last_timestamp=state['last_timestamp'],
                     equity_usdc=book.equity(price),cash_usdc=book.cash,
+                    gross_usdc=book.gross(price),net_usdc=book.net(price),
                     positions=[asdict(p) for p in book.positions],halted=book.halted,
                     halt_reason=book.halt_reason,pending=state['pending'],
+                    pending_book=state['pending_book'],
                     closed_trades=book.total_closed,costs_usdc=book.fees_paid,
                     last_decision=state['last_decision'],
-                    llm_calls_process=self.council.client.calls,
+                    series={m:dict(bars_processed=s['bars_processed'],last_price=s['last_price'])
+                            for m,s in state.get('series',{}).items()},
+                    llm_calls_process=client_calls,
                     llm_calls_persisted=state.get('llm_calls',0),
                     universe={k:v['status'] for k,v in state.get('universe',{}).items()},
                     blocked_mints=sorted(state.get('blocked_mints',{})))

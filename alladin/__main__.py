@@ -93,8 +93,15 @@ def main():
                 result = export(service,args.output)
             else:
                 count = 0
+                armed = {cfg.mint}
                 for b,s in jsonl_feed(args.feed):
-                    service.command('ingest',dict(candle=asdict(b),snapshot=asdict(s)),f'replay:{b.timestamp}')
+                    if b.mint not in armed:
+                        # Non-anchor mints enter through the same funnel: admit
+                        # classifies the snapshot, watch fails fast if ineligible.
+                        service.command('admit',dict(snapshot=asdict(s)),f'replay:admit:{b.mint}')
+                        service.command('watch',dict(mint=b.mint,arm=True),f'replay:watch:{b.mint}')
+                        armed.add(b.mint)
+                    service.command('ingest',dict(candle=asdict(b),snapshot=asdict(s)),f'replay:{b.mint}:{b.timestamp}')
                     count += 1
                 if args.finalize:
                     service.command('finalize',{},'replay:finalize')

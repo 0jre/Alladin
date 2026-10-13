@@ -14,7 +14,7 @@ python3 -m alladin generate-demo --bars 600
 python3 -m alladin --db data/nova_pesquisa.sqlite replay --feed data/demo.jsonl --output results/nova_pesquisa --finalize
 ```
 
-`data/demo.jsonl` é explicitamente sintético, inclusive oracle, liquidez, autoridades e funding. Os resultados em `results/demo` são exemplos de execução, não evidência de rentabilidade. O replay finalizado fecha posições ao último preço e encerra aquela sessão. Use um banco diferente para uma nova pesquisa/configuração. Para continuar recebendo barras, omita `--finalize`.
+`data/demo.jsonl` é explicitamente sintético, inclusive oracle, liquidez, autoridades e funding. Os resultados em `results/demo` são exemplos de execução, não evidência de rentabilidade. O replay finalizado fecha posições ao último preço e encerra aquela sessão. Use um banco diferente para uma nova pesquisa/configuração. Para continuar recebendo barras, omita `--finalize`. Mints além do âncora entram pelo mesmo funil no replay e no validate: o primeiro snapshot de cada mint é classificado com `admit` e armado com `watch` antes do ingest; um mint inelegível aborta a leitura.
 
 ## Subir o servidor
 
@@ -44,7 +44,7 @@ O comando analyze precisa de barras já ingeridas. Um teste de conectores read-o
 python3 -m alladin call --request docs/request_collect.json --key products-0001
 ```
 
-Cada nova coleta usa uma chave nova; uma repetição com a mesma chave retorna a resposta anterior, inclusive seu timestamp. A mesma chave com outro corpo é recusada. Mutações, resposta idempotente e evento são persistidos atomicamente em SQLite WAL. Repetir a última barra com o mesmo conteúdo e outra chave também não executa de novo. Barras fora de ordem, lacunas ou revisão de uma barra processada são recusadas.
+Cada nova coleta usa uma chave nova; uma repetição com a mesma chave retorna a resposta anterior, inclusive seu timestamp. A mesma chave com outro corpo é recusada. Mutações, resposta idempotente e evento são persistidos atomicamente em SQLite WAL. O WAL usa `synchronous=NORMAL`: commits continuam atômicos e consistentes; só uma queda de sistema operacional ou energia pode perder a última transação confirmada — e com ela o registro de idempotência, então a repetição com a mesma chave reexecuta limpa. Repetir a última barra com o mesmo conteúdo e outra chave também não executa de novo. Barras fora de ordem, lacunas ou revisão de uma barra processada são recusadas.
 
 ## Modo de agentes de IA
 

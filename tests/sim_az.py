@@ -5,6 +5,7 @@ import sys
 import tempfile
 import time
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 from alladin.agents import Council
@@ -412,7 +413,7 @@ def run_levels():
 def summarize(rows):
     equities = [row['equity'] for row in rows if isinstance(row.get('equity'), (int, float))]
     return {
-        'generated_at': '2026-10-13',
+        'generated_at': datetime.now(timezone.utc).date().isoformat(),
         'source': 'tests/sim_az.py',
         'data': 'SYNTHETIC',
         'levels': len(rows),

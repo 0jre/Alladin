@@ -53,7 +53,7 @@ def build_server(service,port=8080,token=None):
         raise ValueError('LAB_API_TOKEN obrigatório com pelo menos 32 caracteres')
     mutation_lock = threading.Lock()
     class Handler(BaseHTTPRequestHandler):
-        server_version = 'Alladin/0.3'
+        server_version = 'Alladin/0.5'
         def log_message(self,*args):
             pass  # avoid tokens, addresses, request paths and payloads in access logs
         def _oauth_callback(self, query):

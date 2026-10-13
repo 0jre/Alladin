@@ -4,12 +4,22 @@ import sqlite3
 from pathlib import Path
 from contextlib import contextmanager
 
+# WAL + synchronous=NORMAL keeps commits atomic and process-crash consistent
+# without paying an fsync per command. Only an OS crash or power loss can drop
+# a just-committed transaction; the idempotent command model tolerates that —
+# a lost command loses its idempotency record too, so a retry with the same
+# key re-executes cleanly instead of replaying a phantom result.
+_SYNC = 'NORMAL'
+# Bound WAL growth without a checkpoint on every command close.
+_CHECKPOINT_EVERY = 128
+
 def canonical(value):
     return json.dumps(value,sort_keys=True,separators=(',',':'),allow_nan=False)
 
 class Store:
     def __init__(self,path):
         self.path = str(path)
+        self._writes = 0
         Path(self.path).parent.mkdir(parents=True,exist_ok=True)
         with self.connect() as db:
             db.executescript('''
@@ -22,6 +32,12 @@ class Store:
     def _open(self):
         db = sqlite3.connect(self.path,timeout=60)
         db.execute('PRAGMA busy_timeout=60000')
+        db.execute(f'PRAGMA synchronous={_SYNC}')
+        # The automatic checkpoint on last-connection close dominated command
+        # latency. When the driver supports disabling it, the periodic PASSIVE
+        # checkpoint in transaction() bounds the WAL instead.
+        if hasattr(db,'setconfig') and hasattr(sqlite3,'SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE'):
+            db.setconfig(sqlite3.SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,True)
         return db
     @contextmanager
     def connect(self):
@@ -37,6 +53,12 @@ class Store:
             db.execute('BEGIN IMMEDIATE')
             yield db
             db.commit()
+            self._writes += 1
+            if self._writes % _CHECKPOINT_EVERY == 0:
+                try:
+                    db.execute('PRAGMA wal_checkpoint(PASSIVE)')
+                except Exception:
+                    pass  # checkpoint nunca altera o resultado do comando já confirmado
         except BaseException:
             db.rollback()
             raise

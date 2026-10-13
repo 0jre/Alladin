@@ -14,25 +14,26 @@ def security_checks(s,cfg,now):
     reasons = []
     if s.chain != cfg.chain:
         reasons.append('wrong_chain_or_mint')
-    if s.chain in {'ethereum', 'base', 'arbitrum'}:
-        return reasons
-    if not s.account_checked or not s.cluster_verified:
-        reasons.append('unverified_onchain_data')
-    if s.token_program == TOKEN_2022:
-        if not s.extensions_decoded:
-            reasons.append('token2022_extensions_not_decoded')
-        if set(s.extensions) & {'non_transferable', 'permanent_delegate', 'pausable', 'default_frozen'}:
-            reasons.append('dangerous_token2022_extension')
-        if 'transfer_hook' in s.extensions:
-            reasons.append('unknown_transfer_hook')
-        if 'transfer_fee' in s.extensions and not cfg.allow_transfer_fee:
-            reasons.append('transfer_fee_blocked')
-    elif s.token_program != TOKEN_PROGRAM:
-        reasons.append('unsupported_token_program')
-    if s.mint_authority is not None or s.freeze_authority is not None:
-        reasons.append('active_token_authority')
-    if s.mint != SOL and (s.top10_account_share is None or s.top10_account_share > cfg.max_top10_account_share):
-        reasons.append('holder_concentration_unknown_or_high')
+    if s.chain == 'solana':
+        # On-chain controls only exist for SPL/Token-2022 mints.
+        if not s.account_checked or not s.cluster_verified:
+            reasons.append('unverified_onchain_data')
+        if s.token_program == TOKEN_2022:
+            if not s.extensions_decoded:
+                reasons.append('token2022_extensions_not_decoded')
+            if set(s.extensions) & {'non_transferable', 'permanent_delegate', 'pausable', 'default_frozen'}:
+                reasons.append('dangerous_token2022_extension')
+            if 'transfer_hook' in s.extensions:
+                reasons.append('unknown_transfer_hook')
+            if 'transfer_fee' in s.extensions and not cfg.allow_transfer_fee:
+                reasons.append('transfer_fee_blocked')
+        elif s.token_program != TOKEN_PROGRAM:
+            reasons.append('unsupported_token_program')
+        if s.mint_authority is not None or s.freeze_authority is not None:
+            reasons.append('active_token_authority')
+        if s.mint != SOL and (s.top10_account_share is None or s.top10_account_share > cfg.max_top10_account_share):
+            reasons.append('holder_concentration_unknown_or_high')
+    # Generic data gates apply to every chain, including EVM swap routes.
     if s.timestamp > now or now-s.timestamp > cfg.max_snapshot_age_seconds:
         reasons.append('future_or_stale_snapshot')
     if s.liquidity_usd < cfg.min_liquidity_usd:

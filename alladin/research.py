@@ -74,7 +74,7 @@ def export(service,destination):
     pnl = [t['net_pnl'] for t in trades]
     profit,loss = sum(max(0,p) for p in pnl),-sum(min(0,p) for p in pnl)
     returns = [b['equity']/a['equity']-1 for a,b in zip(curve,curve[1:]) if a['equity']>0]
-    summary = dict(chain='solana',execution='paper',agent_mode=service.council.mode,
+    summary = dict(chain=service.cfg.chain,execution='paper',agent_mode=service.council.mode,
                    source=state['snapshot']['source'] if state['snapshot'] else None,
                    initial_usdc=service.cfg.initial_usdc,final_usdc=final,
                    return_pct=(final/service.cfg.initial_usdc-1)*100,
@@ -87,7 +87,7 @@ def export(service,destination):
                    bar_return_mean=mean(returns) if returns else None,
                    bar_return_std=pstdev(returns) if returns else None,
                    halted=service.status()['halted'],halt_reason=service.status()['halt_reason'],
-                   llm_calls_process=service.council.client.calls,
+                   llm_calls_process=getattr(getattr(service.council,'client',None),'calls',0),
                    warnings=['Não mede vantagem preditiva ou prontidão de produção.',
                              'Custos hipotéticos; perp é aproximação, não réplica de Drift/Adrena.',
                              'Sem Sharpe anualizado: intervalo/amostra não justificam extrapolação.'])

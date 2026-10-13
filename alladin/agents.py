@@ -90,7 +90,7 @@ class Council:
         ideas = candidates(f,s,cfg)
         actionable = []
         for p in ideas:
-            existing = next((x for x in book.positions if x.market == p.market),None)
+            existing = next((x for x in book.positions if x.market == p.market and x.mint == s.mint),None)
             side = 1 if p.action == 'LONG' else -1
             if existing is None:
                 actionable.append(p)

@@ -44,8 +44,13 @@ def validate(cfg,feed_path,output,folds=3):
                 raise ValueError('Pasta de validação já contém sessão; escolha outro output')
             service=Service(stress_cfg,db,'rules')
             # Context is earlier data only; no entry until the first evaluation bar.
+            armed = {stress_cfg.mint}
             for b,s in rows[start-cfg.warmup_bars:end]:
-                service.command('ingest',dict(candle=asdict(b),snapshot=asdict(s)),f'bar:{b.timestamp}')
+                if b.mint not in armed:
+                    service.command('admit',dict(snapshot=asdict(s)),f'admit:{b.mint}')
+                    service.command('watch',dict(mint=b.mint,arm=True),f'watch:{b.mint}')
+                    armed.add(b.mint)
+                service.command('ingest',dict(candle=asdict(b),snapshot=asdict(s)),f'bar:{b.mint}:{b.timestamp}')
             service.command('finalize',{},'finalize')
             summary=export(service,folder)
             summary.update(fold=fold+1,cost_multiplier=stress,evaluation_start=rows[start][0].timestamp,
