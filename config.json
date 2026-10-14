@@ -2,7 +2,7 @@
   "chain": "solana",
   "execution": "paper",
   "timeframe_seconds": 900,
-  "initial_usdc": 20,
+  "initial_usdc": 250,
   "risk_per_trade": 0.003,
   "max_position_fraction": 0.15,
   "max_gross_fraction": 0.30,

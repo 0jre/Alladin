@@ -19,5 +19,8 @@ prova de rentabilidade ou sessão de negociação.
 - WAL com `synchronous=NORMAL`: atômico e consistente em crash de processo; perda do último commit só em queda de SO/energia — tolerada pelo modelo de repetição idempotente.
 - Decisão na barra N executa na abertura de N+1 revalidando o snapshot anterior. Nunca fabricar preço de um mint sem barra.
 - Nenhuma ordem externa é permitida neste projeto. Configuração precisa ser `chain=solana`, `execution=paper` e `allowed_markets=["spot"]`.
+- No fluxo paper-live, RPC precede o último livro Coinbase; cotação com mais de 30 segundos não autoriza entrada. Candle anterior à abertura de uma posição não pode disparar stop retroativo.
+- Gaps com posição fecham somente ao mark atual verificado e acionam halt persistente. Nunca preencher stop em preço histórico presumido.
+- Idempotência é consultada antes da coleta. Worker único por banco, polling contado após conclusão, saúde de processo distinta da prontidão do feed.
 - Mints não-âncora entram pelo funil `admit` → `watch`; replay/validate fazem isso automaticamente no primeiro snapshot de cada mint.
 - `status()` precifica cada posição pelo mark do próprio mint (`state['series'][mint]['last_price']`).

@@ -1,5 +1,6 @@
 """Bounded JSON HTTP transport. Never logs auth headers, URLs or response bodies."""
 import json
+import math
 import random
 import time
 import urllib.request
@@ -11,7 +12,8 @@ from urllib.parse import urlsplit, urlencode
 class DataError(RuntimeError):
     def __init__(self, message, retry_after=None):
         super().__init__(message)
-        self.retry_after = retry_after
+        self.retry_after = (min(86400.0,max(0.0,retry_after))
+                            if type(retry_after) in (int,float) and math.isfinite(retry_after) else None)
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
@@ -19,7 +21,9 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 class HTTP:
     def __init__(self, timeout=15, retries=2, retry_cap=8, sleeper=None, random_value=None):
-        if type(retries) is not int or retries < 0 or type(retry_cap) not in (int, float) or retry_cap <= 0:
+        if (type(retries) is not int or not 0 <= retries <= 10
+                or type(retry_cap) not in (int,float) or not math.isfinite(retry_cap) or retry_cap <= 0
+                or type(timeout) not in (int,float) or not math.isfinite(timeout) or timeout <= 0):
             raise ValueError('Configuração de retry inválida')
         self.timeout, self.retries, self.retry_cap = timeout, retries, float(retry_cap)
         self._sleep = sleeper or time.sleep
@@ -55,7 +59,8 @@ class HTTP:
                     raise DataError('Resposta excedeu limite de bytes')
                 return json.loads(raw,parse_constant=lambda _: (_ for _ in ()).throw(ValueError('Nonfinite JSON')))
             except urllib.error.HTTPError as e:
-                if e.code == 429:
+                e.close()
+                if e.code in {429,503}:
                     retry_after = self._retry_after(e)
                     if not retry or attempt == attempts-1:
                         raise DataError('Fonte de dados temporariamente indisponível',
@@ -76,7 +81,7 @@ class HTTP:
                 if attempt == attempts-1:
                     raise DataError('Falha de rede/timeout; endpoint omitido') from None
                 self._sleep(self._backoff(attempt))
-            except (json.JSONDecodeError,ValueError):
+            except (json.JSONDecodeError,ValueError,UnicodeError):
                 raise DataError('JSON inválido') from None
 
     def _backoff(self, attempt):
@@ -90,7 +95,8 @@ class HTTP:
         if raw is None:
             return None
         try:
-            return min(86400.0, max(0.0, float(raw)))
+            seconds = float(raw)
+            return min(86400.0, max(0.0,seconds)) if math.isfinite(seconds) else None
         except (TypeError, ValueError):
             try:
                 deadline = parsedate_to_datetime(raw)

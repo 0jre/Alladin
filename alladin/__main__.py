@@ -2,6 +2,8 @@ import argparse
 import json
 import os
 import sys
+import signal
+import threading
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -14,6 +16,9 @@ from .client import BackendClient
 from .transport import DataError
 from .validation import validate
 
+def _interrupt(signum,frame):
+    raise KeyboardInterrupt()
+
 def main():
     parser = argparse.ArgumentParser(description='Solana-only research backend; paper execution and read-only market data.')
     parser.add_argument('--config',default='config.json')
@@ -25,7 +30,10 @@ def main():
     demo = sub.add_parser('generate-demo'); demo.add_argument('--output',default='data/demo.jsonl'); demo.add_argument('--bars',type=int,default=600)
     run = sub.add_parser('replay'); run.add_argument('--feed',required=True); run.add_argument('--output',default='results'); run.add_argument('--finalize',action='store_true')
     serve = sub.add_parser('serve'); serve.add_argument('--port',type=int,default=8080)
+    serve.add_argument('--paper-worker',action='store_true')
+    serve.add_argument('--poll-seconds',type=int,default=30)
     paper_live = sub.add_parser('paper-live'); paper_live.add_argument('--poll-seconds',type=int,default=30)
+    paper_live.add_argument('--cycles',type=int,default=None)
     sub.add_parser('paper-tick')
     sub.add_parser('mcp')
     sub.add_parser('status'); sub.add_parser('contract')
@@ -49,6 +57,10 @@ def main():
             if not 1 <= args.max_llm_calls <= 10000:
                 raise ValueError('Limite de chamadas: 1–10000')
             cfg = Config.load(args.config)
+            if args.agents == 'llm' and (args.command in {'paper-live','paper-tick','replay'}
+                    or args.command == 'serve' and args.paper_worker):
+                if not os.environ.get('OPENAI_API_KEY') or not (args.model or os.environ.get('OPENAI_MODEL')):
+                    raise ValueError('Modo llm exige OPENAI_API_KEY e OPENAI_MODEL ou --model')
             if args.command == 'validate':
                 if args.agents != 'rules':
                     raise ValueError('Validação por folds nesta versão aceita rules; avaliação LLM ainda pendente')
@@ -63,40 +75,48 @@ def main():
                 print(json.dumps(result,indent=2,ensure_ascii=False,allow_nan=False))
                 return 0
             elif args.command == 'paper-live':
-                if not 10 <= args.poll_seconds <= 300:
-                    raise ValueError('poll-seconds precisa estar entre 10 e 300')
-                if cfg.chain != 'solana' or cfg.execution != 'paper' or set(cfg.allowed_markets) != {'spot'}:
-                    raise ValueError('paper-live exige Solana, execução paper e spot apenas')
+                from .runtime import PaperRunner
+                runner = PaperRunner(service,args.poll_seconds)
+                previous = signal.signal(signal.SIGTERM,lambda *_:runner.stop_event.set())
                 try:
-                    next_poll = time.monotonic()
-                    failures = 0
-                    while True:
-                        try:
-                            result = service.command('paper_tick',{},'paper-live-'+str(time.time_ns()))
-                            failures = 0
-                            delay = args.poll_seconds
-                        except DataError as exc:
-                            failures += 1
-                            delay = max(min(300,max(args.poll_seconds,10)*(2**min(failures-1,4))),
-                                        getattr(exc,'retry_after',0) or 0)
-                            result = {'result':'provider_unavailable','error':str(exc),'retry_seconds':delay,
-                                      'portfolio_unchanged':True}
-                        print(json.dumps(result,ensure_ascii=False,allow_nan=False),flush=True)
-                        next_poll += delay
-                        time.sleep(max(0,next_poll-time.monotonic()))
+                    runner.run(args.cycles)
                 except KeyboardInterrupt:
-                    print(json.dumps({'result':'stopped','positions_left_open':len(service.status()['positions'])}),flush=True)
+                    runner.stop_event.set()
+                finally:
+                    signal.signal(signal.SIGTERM,previous)
+                print(json.dumps({'result':'stopped','positions_left_open':len(service.status()['positions'])}),flush=True)
                 return 0
             if args.command == 'serve':
-                server = build_server(service,args.port)
-                print(json.dumps(dict(status='listening',host='127.0.0.1',port=server.server_port,venue='coinbase_advanced',chain=cfg.chain,execution=cfg.execution)),flush=True)
+                from .runtime import PaperRunner
+                runner = PaperRunner(service,args.poll_seconds) if args.paper_worker else None
+                server = build_server(service,args.port,runner=runner)
+                worker_failed = threading.Event()
+                def work():
+                    try:
+                        runner.run()
+                    except Exception:
+                        worker_failed.set()
+                        print(json.dumps({'result':'worker_failed','detail':'worker stopped; supervisor restart required'}),flush=True)
+                        server.shutdown()
+                thread = threading.Thread(target=work,daemon=True,name='paper-worker') if runner else None
+                previous = signal.signal(signal.SIGTERM,_interrupt)
                 try:
+                    print(json.dumps(dict(status='listening',host='127.0.0.1',port=server.server_port,
+                        venue='coinbase_advanced',chain=cfg.chain,execution=cfg.execution,
+                        paper_worker=bool(runner))),flush=True)
+                    if thread:
+                        thread.start()
                     server.serve_forever()
                 except KeyboardInterrupt:
                     pass
                 finally:
+                    if runner:
+                        runner.stop_event.set()
                     server.server_close()
-                return 0
+                    if thread and thread.ident is not None:
+                        thread.join(timeout=30)
+                    signal.signal(signal.SIGTERM,previous)
+                return 1 if worker_failed.is_set() else 0
             if args.command == 'status':
                 result = service.status()
             elif args.command == 'halt':

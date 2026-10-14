@@ -3,10 +3,11 @@
 Paper mode never builds, signs, or submits a wallet transaction.
 """
 import os
+import math
 import time
 from urllib.parse import quote, urlencode
 
-from .models import Candle, Snapshot, SOL, TOKEN_PROGRAM, MAINNET_GENESIS, pubkey
+from .models import Candle, Snapshot, SOL, TOKEN_PROGRAM, MAINNET_GENESIS, pubkey, utc_timestamp
 from .transport import HTTP, DataError
 
 
@@ -31,11 +32,14 @@ class SolanaRPC:
         if self.call("getGenesisHash") != MAINNET_GENESIS:
             raise DataError("RPC não pertence à Solana mainnet")
         account = self.call("getAccountInfo", [mint, {"encoding": "jsonParsed", "commitment": "finalized"}])
-        value = account.get("value")
+        value = account.get("value") if isinstance(account,dict) else None
         if not isinstance(value, dict) or value.get("owner") != TOKEN_PROGRAM:
             raise DataError("Somente mint SPL clássico é suportado; Token-2022 recusado")
-        parsed = value.get("data", {}).get("parsed", {})
-        info = parsed.get("info", {})
+        data = value.get('data')
+        parsed = data.get('parsed') if isinstance(data,dict) else None
+        if not isinstance(parsed,dict) or not isinstance(parsed.get('info'),dict):
+            raise DataError('Resposta RPC de mint inválida')
+        info = parsed['info']
         if parsed.get("type") != "mint" or info.get("isInitialized") is not True:
             raise DataError("Conta não é um mint inicializado")
         if "mintAuthority" not in info or "freezeAuthority" not in info:
@@ -49,10 +53,13 @@ class SolanaRPC:
             total = int(supply["value"]["amount"])
             share = None if total == 0 else min(
                 1, sum(int(row["amount"]) for row in largest["value"][:10]) / total)
+        context = account.get('context')
+        if not isinstance(context,dict) or type(context.get('slot')) is not int or context['slot']<0:
+            raise DataError('Slot RPC inválido')
         return dict(mint=mint, token_program=value["owner"],
                     mint_authority=info["mintAuthority"], freeze_authority=info["freezeAuthority"],
                     top10_account_share=share, account_checked=True, cluster_verified=True,
-                    slot=account["context"]["slot"],
+                    slot=context['slot'],
                     warnings=["RPC público e contas SPL; não classifica contas de pool/custódia."])
 
 
@@ -66,6 +73,7 @@ class CoinbaseMarket:
     def __init__(self, http=None, product_id=None):
         self.http = http or HTTP(timeout=8, retries=2)
         self.product_id = product_id or "SOL-USDC"
+        self._volume_cache = None
         if self.product_id not in self.PRODUCT_IDS:
             raise ValueError("Somente o produto Coinbase SOL-USDC é permitido")
 
@@ -97,6 +105,8 @@ class CoinbaseMarket:
         try:
             for item in raw:
                 ts = int(item["start"])
+                if ts % step:
+                    raise ValueError('Candle desalinhado')
                 if ts + step > cutoff:
                     continue
                 close = float(item["close"])
@@ -117,14 +127,22 @@ class CoinbaseMarket:
     def market(self, mint=SOL, candles=None, timeframe_seconds=900):
         if pubkey(mint) != SOL:
             raise DataError("Coinbase market data habilitado somente para o mint nativo SOL")
+        # Slow statistics first. The executable paper reference is fetched last.
+        volume_quote = self._volume(candles,timeframe_seconds)
+        trade_data = self._get(f"products/{quote(self.product_id, safe='')}/ticker", {"limit": 100})
         book = self._get("product_book", {"product_id": self.product_id, "limit": 50})
         try:
             pricebook = book["pricebook"]
+            if pricebook['product_id'] != self.product_id:
+                raise ValueError('Produto errado')
+            observed_at = utc_timestamp(pricebook['time'])
+            if not -5 <= time.time()-observed_at <= 30:
+                raise ValueError('Livro stale ou futuro')
             bids, asks = pricebook["bids"], pricebook["asks"]
             best_bid, best_ask = float(bids[0]["price"]), float(asks[0]["price"])
         except (KeyError, TypeError, ValueError, IndexError):
             raise DataError("Livro Coinbase inválido ou vazio") from None
-        if min(best_bid, best_ask) <= 0 or best_bid > best_ask:
+        if not all(math.isfinite(v) for v in (best_bid,best_ask)) or min(best_bid, best_ask) <= 0 or best_bid > best_ask:
             raise DataError("Melhor bid/ask Coinbase inválido")
         mid = (best_bid + best_ask) / 2
         bid_depth = self._depth(bids, mid, lower=True)
@@ -132,7 +150,6 @@ class CoinbaseMarket:
         if min(bid_depth, ask_depth) <= 0:
             raise DataError("Profundidade Coinbase insuficiente")
 
-        trade_data = self._get(f"products/{quote(self.product_id, safe='')}/ticker", {"limit": 100})
         trades = trade_data.get("trades") if isinstance(trade_data, dict) else None
         if not isinstance(trades, list) or not trades:
             raise DataError("Trades Coinbase ausentes ou inválidos")
@@ -140,6 +157,8 @@ class CoinbaseMarket:
         try:
             for trade in trades:
                 notional = float(trade["price"]) * float(trade["size"])
+                if not math.isfinite(notional) or notional <= 0:
+                    raise ValueError('Trade não finito ou não positivo')
                 # Coinbase reports maker side. Reverse it to estimate taker aggression.
                 if trade["side"] == "SELL":
                     buy_notional += notional
@@ -151,18 +170,31 @@ class CoinbaseMarket:
             raise DataError("Trade Coinbase inválido") from None
         imbalance = ((buy_notional - sell_notional) / (buy_notional + sell_notional)
                      if buy_notional + sell_notional else 0.0)
-        day_ago = int(time.time()) - 86400
-        volume_bars = candles or []
-        if not volume_bars or volume_bars[0].timestamp > day_ago:
-            # Short trading intervals do not span a day; fetch hourly SOL-USDC candles for volume.
-            volume_bars = self.candles(mint, count=26, aggregate=3600)
-        if volume_bars[0].timestamp > day_ago:
-            raise DataError("Candles Coinbase insuficientes para medir o volume de 24 horas")
-        volume_quote = sum(bar.volume for bar in volume_bars if bar.timestamp >= day_ago)
+        if not all(math.isfinite(v) for v in (bid_depth,ask_depth,buy_notional,sell_notional)):
+            raise DataError('Estatísticas Coinbase não finitas')
         return dict(mint=mint, product_id=self.product_id, price=mid,
                     bid=best_bid, ask=best_ask,
                     liquidity_usd=bid_depth + ask_depth, volume_24h_usd=volume_quote,
-                    buy_sell_imbalance=imbalance, source="coinbase_advanced_sol_spot")
+                    buy_sell_imbalance=imbalance,observed_at=observed_at,
+                    source="coinbase_advanced_sol_spot")
+
+    def _volume(self,candles,timeframe_seconds):
+        """Estimate quote volume over a full 24h of completed candles only."""
+        end = int(time.time())//timeframe_seconds*timeframe_seconds
+        start = end-86400
+        bars = [b for b in (candles or []) if start <= b.timestamp and b.timestamp+timeframe_seconds <= end]
+        if len(bars) == 86400//timeframe_seconds:
+            return sum(b.volume for b in bars)
+        end = int(time.time())//3600*3600
+        if self._volume_cache and self._volume_cache[0] == end:
+            return self._volume_cache[1]
+        bars = self.candles(SOL,count=26,aggregate=3600)
+        bars = [b for b in bars if end-86400 <= b.timestamp and b.timestamp+3600 <= end]
+        if len(bars) != 24:
+            raise DataError('Candles Coinbase insuficientes para medir 24 horas completas')
+        volume = sum(b.volume for b in bars)
+        self._volume_cache = (end,volume)
+        return volume
 
     @staticmethod
     def _depth(levels, mid, lower):
@@ -172,7 +204,7 @@ class CoinbaseMarket:
                 price, size = float(level["price"]), float(level["size"])
             except (KeyError, TypeError, ValueError, OverflowError):
                 raise DataError("Nível do livro Coinbase inválido") from None
-            if price <= 0 or size < 0:
+            if not math.isfinite(price) or not math.isfinite(size) or price <= 0 or size < 0:
                 raise DataError("Nível do livro Coinbase inválido")
             if (price >= mid * .99) if lower else (price <= mid * 1.01):
                 depth += price * size
@@ -181,9 +213,13 @@ class CoinbaseMarket:
 
 def collect(mint=SOL, rpc=None, market=None):
     r = (rpc or SolanaRPC()).inspect(mint)
+    if callable(market):
+        market = market()
     if not market:
         raise DataError("Dados atuais da Coinbase são obrigatórios")
-    observed_at = int(time.time())
+    observed_at = market.get('observed_at',int(time.time()))
+    if not -5 <= time.time()-observed_at <= 30:
+        raise DataError('Cotação Coinbase expirada; ciclo bloqueado')
     return Snapshot(timestamp=observed_at, mint=mint, price=market["price"],
                     liquidity_usd=market["liquidity_usd"], volume_24h_usd=market["volume_24h_usd"],
                     buy_sell_imbalance=market["buy_sell_imbalance"],

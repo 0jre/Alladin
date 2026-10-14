@@ -8,6 +8,8 @@ import threading
 import unittest
 import urllib.request
 import urllib.error
+from types import SimpleNamespace
+import time
 from dataclasses import asdict,replace
 from unittest.mock import patch
 from pathlib import Path
@@ -320,7 +322,8 @@ class HTTPTests(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory()
         self.token='x'*40
         self.service=Service(Config(),Path(self.temp.name)/'http.sqlite')
-        self.server=build_server(self.service,0,self.token)
+        self.runner=SimpleNamespace(health=lambda:{'ready':False,'running':False})
+        self.server=build_server(self.service,0,self.token,runner=self.runner)
         self.thread=threading.Thread(target=self.server.serve_forever,daemon=True)
         self.thread.start()
         self.url=f'http://127.0.0.1:{self.server.server_port}'
@@ -336,6 +339,19 @@ class HTTPTests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as e:
             self.request('/v1/status',auth=False)
         self.assertEqual(e.exception.code,401)
+    def test_readiness_requires_active_worker_and_recent_feed(self):
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.request('/ready',auth=False)
+        self.assertEqual(error.exception.code,503)
+        with self.service.store.transaction() as db:
+            state=self.service._load(db)
+            state['last_timestamp']=int(time.time())-self.service.cfg.timeframe_seconds
+            self.service.store.save(db,state)
+        self.runner.health=lambda:{'ready':True,'running':True}
+        with self.request('/ready',auth=False) as response:
+            self.assertTrue(json.load(response)['ready'])
+        with self.request('/v1/health') as response:
+            self.assertTrue(json.load(response)['worker']['running'])
     def test_health_and_json_contract(self):
         with self.request('/health',auth=False) as r:
             body=json.load(r)
@@ -359,6 +375,7 @@ class HTTPTests(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError) as raised:
                 self.request('/v1/commands',{'command':'paper_tick','args':{}})
         self.assertEqual(raised.exception.code,503)
+        self.assertEqual(raised.exception.headers['Retry-After'],'5')
         body=json.loads(raised.exception.read())
         self.assertEqual(body['error'],'provider_unavailable')
         self.assertEqual(body['retry_after_seconds'],5)

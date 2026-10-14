@@ -16,11 +16,13 @@ Requer Python 3.11+ e nenhuma dependência de terceiros:
 
 ```bash
 python3 -m unittest discover -s tests -v
-python3 -m alladin --config config.json --db data/paper.sqlite paper-tick
-python3 -m alladin --config config.json --db data/paper.sqlite paper-live --poll-seconds 30
+python3 -m alladin --config config.json --db data/paper-250.sqlite paper-tick
+python3 -m alladin --config config.json --db data/paper-250.sqlite serve --paper-worker --poll-seconds 30
 ```
 
-O primeiro `paper-tick` tende a retornar `warmed_up`. O modo contínuo imprime um resultado JSON por ciclo e para com Ctrl-C. Para uma conta paper nova, use outro arquivo SQLite. O comando `generate-demo` e `replay` usam dados sintéticos e servem somente para testar o motor, nunca como replay de mercado real.
+O padrão agora é 250 USDC. O primeiro `paper-tick` tende a retornar `warmed_up`. `serve --paper-worker` mantém a API e a coleta no mesmo processo; `paper-live` inicia só o worker. Para uma conta paper nova, use outro arquivo SQLite. O comando `generate-demo` e `replay` usam dados sintéticos e servem somente para testar o motor, nunca como replay de mercado real.
+
+Leia o [guia de operação](docs/operations.md) para persistência, readiness, supervisão Linux, container, gaps e retomada. `GET /health` confirma processo ativo; `GET /ready` verifica prontidão de coleta e worker. O template systemd está em `deploy/alladin.service`.
 
 ## Escolher o motor de decisão
 

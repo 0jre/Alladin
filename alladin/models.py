@@ -32,6 +32,8 @@ def pubkey(value):
     return value
 
 def utc_timestamp(value):
+    if not isinstance(value,str):
+        raise ValueError('Timestamp textual obrigatório')
     d = datetime.fromisoformat(value.replace('Z', '+00:00'))
     if d.tzinfo is None:
         raise ValueError('Timestamp precisa de timezone')

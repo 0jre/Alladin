@@ -2,6 +2,8 @@
 import hmac
 import json
 import os
+import math
+import time
 import threading
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlsplit,parse_qs
@@ -12,6 +14,8 @@ CONTRACT = {
     'version':'0.6','venue':'coinbase_advanced','chain':'solana','execution':'paper',
     'endpoints':{'GET /health':'process health; no portfolio data',
                  'GET /v1/status':'persistent portfolio state',
+                 'GET /ready':'paper worker and feed readiness; no portfolio data',
+                 'GET /v1/health':'authenticated worker and session diagnostics',
                  'GET /v1/audit?limit=100':'decision and execution events',
                  'GET /v1/contract':'command contract',
                  'GET /v1/audit/verify':'verify event hash chain',
@@ -35,7 +39,7 @@ CONTRACT = {
              'Paper fills use the current Coinbase midpoint plus configured cost assumptions; they are not routed quotes.',
              'ingest automatically invokes the council; synthetic replay is not a live-market performance test.']}
 
-def build_server(service,port=8080,token=None):
+def build_server(service,port=8080,token=None,runner=None):
     token = token or os.environ.get('LAB_API_TOKEN')
     if not token or len(token) < 32:
         raise ValueError('LAB_API_TOKEN obrigatório com pelo menos 32 caracteres')
@@ -44,12 +48,14 @@ def build_server(service,port=8080,token=None):
         server_version = 'Alladin/0.6'
         def log_message(self,*args):
             pass  # avoid tokens, addresses, request paths and payloads in access logs
-        def send_json(self,status,value):
+        def send_json(self,status,value,retry_after=None):
             raw = json.dumps(value,allow_nan=False,separators=(',',':')).encode()
             self.send_response(status)
             self.send_header('Content-Type','application/json; charset=utf-8')
             self.send_header('Content-Length',str(len(raw)))
             self.send_header('Cache-Control','no-store')
+            if retry_after is not None:
+                self.send_header('Retry-After',str(max(0,math.ceil(retry_after))))
             self.end_headers()
             self.wfile.write(raw)
         def authenticated(self):
@@ -63,11 +69,28 @@ def build_server(service,port=8080,token=None):
             parsed = urlsplit(self.path)
             if parsed.path == '/health':
                 return self.send_json(200,{'status':'ok','venue':'coinbase_advanced','chain':service.cfg.chain,'execution':service.cfg.execution})
+            if parsed.path == '/ready':
+                try:
+                    state = service.status()
+                    ready = bool(runner and runner.health()['ready'] and not state['halted']
+                        and state['last_timestamp'] is not None
+                        and time.time()-state['last_timestamp']-service.cfg.timeframe_seconds
+                            <= max(120,service.cfg.timeframe_seconds*2)
+                        and not (state.get('last_decision') or {}).get('council',{}).get('error'))
+                    return self.send_json(200 if ready else 503,{'ready':ready})
+                except Exception:
+                    return self.send_json(503,{'ready':False})
             if not self.authenticated():
                 return
             try:
                 if parsed.path == '/v1/status':
                     result = service.status()
+                elif parsed.path == '/v1/health':
+                    state = service.status()
+                    result = dict(worker=runner.health() if runner else {'running':False,'ready':False},
+                                  agent_mode=state['agent_mode'],halted=state['halted'],
+                                  last_bar=state['last_timestamp'],
+                                  decision_error=(state.get('last_decision') or {}).get('council',{}).get('error'))
                 elif parsed.path == '/v1/contract':
                     result = CONTRACT
                 elif parsed.path == '/v1/audit/verify':
@@ -88,8 +111,7 @@ def build_server(service,port=8080,token=None):
                 return
             if self.path != '/v1/commands':
                 return self.send_json(404,{'error':'not_found'})
-            if not mutation_lock.acquire(blocking=False):
-                return self.send_json(503,{'error':'command_busy','retry':'same_idempotency_key'})
+            locked = False
             try:
                 length = int(self.headers.get('Content-Length','0'))
                 if not 1 <= length <= 200000 or self.headers.get('Transfer-Encoding'):
@@ -102,6 +124,10 @@ def build_server(service,port=8080,token=None):
                 name,args = d['command'],d['args']
                 if not isinstance(name,str):
                     raise ValueError('command inválido')
+                if name != 'halt':
+                    locked = mutation_lock.acquire(blocking=False)
+                    if not locked:
+                        return self.send_json(503,{'error':'command_busy','retry':'same_idempotency_key'})
                 key = self.headers.get('Idempotency-Key','')
                 result = execute(service, name, args, key)
                 self.send_json(200,{'result':result})
@@ -111,10 +137,11 @@ def build_server(service,port=8080,token=None):
                 body={'error':'provider_unavailable','detail':str(e)[:200]}
                 if getattr(e,'retry_after',None) is not None:
                     body['retry_after_seconds']=e.retry_after
-                self.send_json(503,body)
+                self.send_json(503,body,retry_after=getattr(e,'retry_after',None))
             except Exception:
                 self.send_json(500,{'error':'internal_error'})
             finally:
-                mutation_lock.release()
+                if locked:
+                    mutation_lock.release()
     # Reads/health remain available during LLM calls; one serialized command at a time.
     return ThreadingHTTPServer(('127.0.0.1',port),Handler)

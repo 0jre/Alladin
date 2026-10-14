@@ -1,4 +1,5 @@
 import hashlib
+import threading
 import time
 from dataclasses import asdict, replace
 from .models import Candle, Snapshot, Proposal, Portfolio
@@ -9,6 +10,7 @@ from .broker import PaperBroker
 from .storage import Store, canonical
 from .universe import seed_primary, classify_snapshot
 from .providers import CoinbaseMarket, collect
+from .transport import DataError
 
 class Service:
     """One persistent state machine, serialized by SQLite write transactions."""
@@ -16,6 +18,8 @@ class Service:
         self.cfg,self.store = cfg,Store(db_path)
         self.council = council or Council(agent_mode,model,max_llm_calls)
         self.fingerprint = hashlib.sha256(canonical(asdict(cfg)).encode()).hexdigest()
+        self.command_lock = threading.RLock()
+        self._provider = None
     def _ensure(self,state):
         for key,default in [('series',{}),('pending_book',{}),('blocked_mints',{}),
                             ('universe',{}),('memory',[]),
@@ -40,6 +44,8 @@ class Service:
             return price
         return marks
     def _decide(self,state,f,s,book,end):
+        if book.halted:
+            return replace(Proposal(thesis='Sessão bloqueada: '+book.halt_reason),mint=s.mint),{'gate':'halted','mode':self.council.mode}
         if hasattr(self.council,'client'):
             self.council.client.calls = max(getattr(self.council.client,'calls',0),state.get('llm_calls',0))
         if hasattr(self.council,'memory'):
@@ -224,9 +230,26 @@ class Service:
                     universe={k:v['status'] for k,v in state.get('universe',{}).items()},
                     blocked_mints=sorted(state.get('blocked_mints',{})))
     def command(self,name,args,key):
+        if name == 'paper_tick':
+            with self.command_lock:
+                return self._serialized_command(name,args,key)
+        return self._serialized_command(name,args,key)
+    def _serialized_command(self,name,args,key):
         allowed = {'ingest','paper_tick','analyze','evaluate','halt','finalize','universe','admit','watch','unwatch'}
-        if name not in allowed:
+        if not isinstance(name,str) or name not in allowed:
             raise ValueError('Comando desconhecido ou não permitido')
+        if not isinstance(args,dict):
+            raise ValueError('args deve ser um objeto')
+        request = dict(command=name,args=args)
+        with self.store.connect() as db:
+            state = self._load(db)  # reject incompatible persisted sessions before any network IO
+            old = self.store.lookup(db,key,request)
+            if old is not None:
+                return old
+            if name in {'paper_tick','ingest'}:
+                mode = 'paper_live' if name == 'paper_tick' else 'replay'
+                if state.get('input_mode') not in (None,mode):
+                    raise ValueError('Não misture paper-live e replay no mesmo banco')
         paper_data = self._collect_paper_data(args) if name == 'paper_tick' else None
         with self.store.transaction() as db:
             return self.store.once(db,key,dict(command=name,args=args),
@@ -245,23 +268,29 @@ class Service:
         # Read the last committed bar to avoid the RPC checks when no new candle exists.
         with self.store.connect() as db:
             state = self._load(db)
-        provider = CoinbaseMarket()
+        if self._provider is None:
+            self._provider = CoinbaseMarket()
+        provider = self._provider
         candles = provider.candles(self.cfg.mint, count=120, aggregate=step)
-        market = provider.market(self.cfg.mint, candles=candles, timeframe_seconds=step)
+        if int(time.time()) - (candles[-1].timestamp+step) > step:
+            raise DataError('Feed Coinbase atrasado; ciclo bloqueado')
         snap = None
-        if state['last_timestamp'] is not None:
-            next_ts = state['last_timestamp']+step
-            has_next = any(b.timestamp == next_ts for b in candles)
-            if has_next and candles[-1].timestamp == next_ts:
-                snap = collect(self.cfg.mint,market=market)
-        return dict(market=market,candles=candles,snapshot=snap)
+        if state['last_timestamp'] is not None and candles[-1].timestamp > state['last_timestamp']:
+            # RPC first, quote last: RPC latency must not rejuvenate an old price.
+            snap = collect(self.cfg.mint,market=lambda:provider.market(
+                self.cfg.mint,candles=candles,timeframe_seconds=step))
+        return dict(candles=candles,snapshot=snap)
     def _command(self,db,name,args,paper_data=None):
         state = self._load(db)
         book = Portfolio.restore(state['portfolio'])
+        if name in {'paper_tick','ingest'}:
+            mode = 'paper_live' if name == 'paper_tick' else 'replay'
+            if state.get('input_mode') not in (None,mode):
+                raise ValueError('Não misture paper-live e replay no mesmo banco')
+            state['input_mode'] = mode
         if name in {'universe','admit','watch','unwatch'}:
             return self._universe(db,state,name,args)
         if name == 'paper_tick':
-            market = paper_data['market']
             step = self.cfg.timeframe_seconds
             candles = paper_data['candles']
             if state['last_timestamp'] is None:
@@ -290,10 +319,24 @@ class Service:
                 newest = candles[-1].timestamp
                 if newest <= state['last_timestamp']:
                     return dict(result='waiting_for_closed_bar',last_bar=state['last_timestamp'])
-                raise ValueError('Feed pulou uma ou mais barras; interrompido para evitar preenchimento retroativo')
             if candles[-1].timestamp != next_ts:
+                recovery_events = []
                 if book.positions or state['pending']:
-                    raise ValueError('Mais de uma barra nova com posição/ordem pendente; exige reconciliação, sem fill retroativo')
+                    snap = paper_data['snapshot']
+                    if snap is None or not -5 <= int(time.time())-snap.timestamp <= 30:
+                        raise DataError('Snapshot atual obrigatório para recuperar gap')
+                    # An unobserved interval cannot supply historical stop fills.
+                    # Close at the current mark and latch the safety halt.
+                    book.halted,book.halt_reason = True,'feed_gap'
+                    recovery_events = PaperBroker(book,self.cfg).flatten(
+                        snap.price,snap.timestamp,'feed_gap_current_mark',mint=self.cfg.mint)
+                    state['pending'] = None
+                    state['portfolio'] = book.serialize()
+                    state['snapshot'] = asdict(snap)
+                    self._remember(state,recovery_events)
+                    state['curve'].append(dict(timestamp=snap.timestamp,equity=book.equity(snap.price),
+                                               price=snap.price,gross=book.gross(snap.price),net=book.net(snap.price)))
+                    state['curve'] = state['curve'][-2000:]
                 history = candles[-self.cfg.warmup_bars:]
                 if len(history) < self.cfg.warmup_bars or any(
                         right.timestamp != left.timestamp+step for left,right in zip(history,history[1:])):
@@ -307,9 +350,11 @@ class Service:
                 self.store.event(db,int(time.time()),'resync_warmup',dict(
                     source='coinbase_advanced_sol_spot',bars=len(history),
                     skipped_bars=max(0,(history[-1].timestamp-next_ts)//step+1),
-                    last_timestamp=history[-1].timestamp,reason='gap_without_open_position'))
+                    last_timestamp=history[-1].timestamp,events=recovery_events,
+                    reason='feed_gap_halted' if book.halted else 'gap_without_open_position'))
                 return dict(result='resynchronized',bars=len(history),last_bar=history[-1].timestamp,
-                            next_action='indicadores reaquecidos; nenhum fill retroativo')
+                            events=recovery_events,halted=book.halted,
+                            next_action='intervenção requerida' if book.halted else 'indicadores reaquecidos; nenhum fill retroativo')
             snap = paper_data['snapshot']
             if snap is None:
                 raise ValueError('Snapshot Solana indisponível para a barra fechada; nada foi negociado')
@@ -441,8 +486,8 @@ class Service:
         if s.source != 'coinbase_advanced_sol_spot' or not s.account_checked or not s.cluster_verified:
             raise ValueError('Snapshot não veio de fontes Solana verificadas')
         now = int(time.time())
-        if s.timestamp > now+5 or now-s.timestamp > self.cfg.max_snapshot_age_seconds:
-            raise ValueError('Snapshot Solana futuro ou stale')
+        if s.timestamp > now+5 or now-s.timestamp > min(30,self.cfg.max_snapshot_age_seconds):
+            raise DataError('Snapshot Solana futuro ou stale')
         if b.timestamp+self.cfg.timeframe_seconds > now+5:
             raise ValueError('Barra OHLCV ainda aberta')
         if state['last_timestamp'] is None or b.timestamp != state['last_timestamp']+self.cfg.timeframe_seconds:
@@ -450,6 +495,7 @@ class Service:
         digest = hashlib.sha256(canonical(payload).encode()).hexdigest()
         broker = PaperBroker(book,self.cfg)
         events = broker.on_bar(b)
+        events.extend(broker.on_mark(s.price,s.timestamp,b.mint))
         equity = update_breakers(book,self.cfg,s.price,s.timestamp)
         if book.halted:
             events.extend(broker.flatten(s.price,s.timestamp,'circuit_breaker',mint=b.mint))
@@ -457,8 +503,11 @@ class Service:
         state['history'] = (state['history']+[asdict(b)])[-500:]
         f = features([Candle(**row) for row in state['history']])
         if f.get('ready'):
-            broker.trail(b.close,f['atr'],b.mint)
+            broker.trail(s.price,f['atr'],b.mint)
         p,audit = self._decide(state,f,s,book,s.timestamp)
+        if int(time.time())-s.timestamp > min(30,self.cfg.max_snapshot_age_seconds):
+            audit['error'] = 'Cotação expirou durante a decisão; entrada bloqueada'
+            p = replace(Proposal(thesis=audit['error']),mint=b.mint)
         approval = approve(p,f,s,book,self.cfg,s.timestamp,s.price,state['universe'].get(b.mint))
         if p.action == 'CLOSE':
             events.extend(broker.close(pos,s.price,s.timestamp,'agent_exit')
@@ -467,8 +516,12 @@ class Service:
             events.append(self._execute_entry(broker,p,approval,s.price,s.timestamp,state))
         decision = dict(timestamp=s.timestamp,mint=b.mint,proposal=asdict(p),
                         approval=asdict(approval),council=audit,
+                        diagnostics=dict(ready=f.get('ready',False),regime=f.get('regime'),
+                                         rsi=f.get('rsi'),atr_fraction=f.get('atr_fraction'),
+                                         candidate_count=len(audit.get('candidates',[])),
+                                         snapshot_age_seconds=int(time.time())-s.timestamp),
                         market_data=dict(source=s.source,bar_timestamp=b.timestamp,
-                                         observed_at=s.timestamp,fill_model='current_pool_mark_plus_configured_costs'))
+                                         observed_at=s.timestamp,fill_model='coinbase_midpoint_plus_configured_costs'))
         state.update(portfolio=book.serialize(),snapshot=asdict(s),last_timestamp=b.timestamp,
                      last_digest=digest,last_price=s.price,bars_processed=state['bars_processed']+1,
                      last_decision=decision)

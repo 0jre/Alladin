@@ -1,0 +1,48 @@
+{
+  "tested_at_utc": "2026-10-14T00:21:37.987491+00:00",
+  "started_at_utc": "2026-10-14T00:20:03.508628+00:00",
+  "mode": "paper",
+  "agent_mode": "rules",
+  "initial_usdc": 250,
+  "timeframe_seconds": 60,
+  "processed_cycles": 1,
+  "cash_usdc": 250,
+  "equity_usdc": 250,
+  "closed_trades": 0,
+  "open_positions": 0,
+  "readiness_http_codes": [
+    200
+  ],
+  "restarted_idempotency_without_network": true,
+  "audit": {
+    "valid": true,
+    "count": 2,
+    "head": "4dcfec57f065a990894fcb97590dc7ee072ececdec0042f104e237a516f463de"
+  },
+  "errors": [],
+  "live_source": "Coinbase Advanced Trade SOL-USDC plus read-only Solana mainnet RPC",
+  "execution_model": "paper midpoint plus configured costs; no external orders",
+  "fixture_tests": "separate deterministic 250 USDC buy/sell, restart, costs and gap tests; not market performance",
+  "proposals": [
+    "LONG"
+  ],
+  "last_approval": {
+    "approved": false,
+    "estimated_stop_loss_usdc": 0.0,
+    "leverage": 1.0,
+    "notional": 0.0,
+    "reasons": [
+      "reward_risk_after_costs"
+    ]
+  },
+  "functional_suite": {
+    "passed": 98,
+    "command": "python -m unittest discover -s tests -q"
+  },
+  "deployment_validation": {
+    "docker_build": "not run; Docker unavailable in this workspace",
+    "systemd": "template supplied; not installed; verification requires configured /opt/alladin host paths",
+    "persistent_host": "not deployed",
+    "llm_live": "not run; API key and model not configured"
+  }
+}

@@ -10,7 +10,7 @@ Alladin é um backend Python de análise e paper trading para Solana mainnet. O 
 4. O motor calcula features e estratégias, o conselho escolhe LONG/HOLD/CLOSE e o risco determina se há aprovação e tamanho.
 5. `PaperBroker` atualiza a carteira local e o SQLite registra resposta idempotente e evento auditável.
 
-O aquecimento não opera. Se o processo perder barras sem uma posição aberta, o histórico é reaquececido com as barras mais recentes, sem fills retroativos. Com posição ou ordem pendente, um gap interrompe o fluxo para reconciliação. Erros transitórios de fonte deixam a carteira intacta; o transporte faz retries limitados respeitando `Retry-After`, e `paper-live` agenda a próxima tentativa com backoff. O HTTP do Alladin traduz falhas persistentes de fonte em 503, nunca repassa o status upstream.
+O aquecimento não opera. Se o processo perder barras sem uma posição aberta, o histórico é reaquececido com as barras mais recentes, sem fills retroativos. Com posição ou ordem pendente, um gap fecha ao mark atual verificado, registra o intervalo não observado e aciona halt persistente para revisão. Erros transitórios de fonte deixam a carteira intacta; o transporte faz retries limitados respeitando `Retry-After`, e `paper-live` agenda a próxima tentativa com backoff. O HTTP do Alladin traduz falhas persistentes de fonte em 503, nunca repassa o status upstream.
 
 ## Camadas
 
@@ -24,9 +24,12 @@ O aquecimento não opera. Se o processo perder barras sem uma posição aberta, 
 | `engine.py` | Estado causal, comandos e idempotência |
 | `storage.py` | SQLite WAL e cadeia de eventos hash |
 | `server.py`, `mcp_server.py` | Interfaces backend para agentes |
+| `runtime.py` | Worker único por banco, retry, shutdown e diagnóstico de saúde |
 
 ## Execução e limites
 
 `Config` aceita apenas `chain=solana`, `execution=paper` e `allowed_markets=["spot"]`. A lógica de decisão e risco é compartilhada pelo ciclo paper. O fill de `paper_tick` usa o midpoint Coinbase mais fee/slippage definidos em configuração; não é uma cotação de rota nem replica impacto/execução de swap.
 
-As chamadas externas são feitas antes da transação de escrita. A mutação, a resposta idempotente e o evento entram juntos na transação SQLite. O feed público Coinbase pode sofrer cache, throttling e falhas; gaps nunca são sintetizados. O RPC público não é um endpoint de produção. Consulte o README para comandos e operação.
+As coletas de mercado/RPC são feitas antes da transação de escrita. O conselho LLM ainda roda na transação; se a cotação expirar durante a decisão, novas entradas são bloqueadas e o orçamento de chamadas é persistido. A mutação, a resposta idempotente e o evento entram juntos na transação SQLite. O feed público Coinbase pode sofrer cache, throttling e falhas; gaps nunca são sintetizados. O RPC público não é um endpoint de produção. Consulte o README para comandos e operação.
+
+O servidor pode iniciar seu worker com `serve --paper-worker`. Consulte [operação](operations.md) para persistência, readiness e supervisão.

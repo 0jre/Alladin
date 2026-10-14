@@ -1,5 +1,6 @@
 import tempfile
 import time
+from datetime import datetime,timezone
 import unittest
 from dataclasses import asdict
 from pathlib import Path
@@ -61,11 +62,13 @@ class ProviderTests(unittest.TestCase):
         class Http:
             def json(self,url,**kwargs):
                 if '/product_book?' in url:
-                    return {'pricebook':{'bids':[{'price':'149.9','size':'10'}],
+                    return {'pricebook':{'product_id':'SOL-USDC',
+                                         'time':datetime.fromtimestamp(now,timezone.utc).isoformat(),
+                                         'bids':[{'price':'149.9','size':'10'}],
                                          'asks':[{'price':'150.1','size':'10'}]}}
                 return {'trades':[{'price':'150','size':'2','side':'SELL'},
                                   {'price':'150','size':'1','side':'BUY'}]}
-        now=int(time.time())
+        now=int(time.time())//900*900
         start=now-86400
         candles=[Candle(start+i*900,150,151,149,150,10) for i in range(97)]
         with patch('alladin.providers.time.time',return_value=now):
@@ -73,7 +76,7 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(data['price'],150)
         self.assertAlmostEqual(data['buy_sell_imbalance'],1/3)
         self.assertEqual(data['liquidity_usd'],3000)
-        self.assertEqual(data['volume_24h_usd'],970)
+        self.assertEqual(data['volume_24h_usd'],960)
         self.assertEqual(data['source'],'coinbase_advanced_sol_spot')
 
     def test_perp_not_approved_without_verified_market(self):
@@ -112,11 +115,12 @@ class LivePaperTests(unittest.TestCase):
                       volume_24h_usd=50_000_000,account_checked=True,cluster_verified=True,
                       source='coinbase_advanced_sol_spot')
         with patch('alladin.engine.CoinbaseMarket',return_value=FakeCoinbase(bars,market)), \
-             patch('alladin.engine.collect',return_value=snap), patch('alladin.engine.time.time',return_value=now):
+             patch('alladin.engine.collect',return_value=snap), patch('alladin.engine.time.time',return_value=now-60) as clock:
             warm=svc.command('paper_tick',{},'warmup')
             self.assertEqual(warm['result'],'warmed_up')
             self.assertEqual(svc.status()['closed_trades'],0)
             self.assertEqual(svc.status()['positions'],[])
+            clock.return_value=now
             tick=svc.command('paper_tick',{},'bar-1')
         self.assertEqual(tick['result'],'processed')
         self.assertTrue(any(event['event']=='OPEN' for event in tick['events']))
@@ -143,9 +147,11 @@ class LivePaperTests(unittest.TestCase):
         class FakeCoinbase(Sequence):
             def market(self,*args,**kwargs):return market
         with patch('alladin.engine.CoinbaseMarket',FakeCoinbase), \
-             patch('alladin.engine.time.time',return_value=now):
+             patch('alladin.engine.time.time',return_value=now-600) as clock, \
+             patch('alladin.engine.collect'):
             warmed=svc.command('paper_tick',{},'warm-gap')
             self.assertEqual(warmed['result'],'warmed_up')
+            clock.return_value=now
             result=svc.command('paper_tick',{},'gap-resync')
         self.assertEqual(result['result'],'resynchronized')
         self.assertEqual(svc.status()['positions'],[])

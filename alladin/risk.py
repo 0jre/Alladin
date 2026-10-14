@@ -123,5 +123,8 @@ def approve(p,f,s,book,cfg,now,entry_price=None,instrument=None):
     notional = min(notional,available/(1/leverage+(cfg.fee_bps+cfg.slippage_bps)/10000))
     if notional < 10:
         return Approval(False,('insufficient_budget',))
+    total_cost_fraction = cost_fraction+2*cfg.fixed_cost_usdc/notional
+    if (p.take_fraction-total_cost_fraction)/(p.stop_fraction+total_cost_fraction) < cfg.min_reward_risk:
+        return Approval(False,('reward_risk_after_fixed_costs',))
     return Approval(True,('risk_constraints_passed',),notional,leverage,
                     notional*(p.stop_fraction+cost_fraction)+2*cfg.fixed_cost_usdc)

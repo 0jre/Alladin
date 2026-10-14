@@ -55,6 +55,8 @@ class PaperBroker:
         for pos in list(self.book.positions):
             if pos.mint != b.mint:
                 continue
+            if pos.opened_at > b.timestamp:
+                continue  # This bar includes prices observed before this position existed.
             if pos.market == 'perp' and b.funding_rate:
                 funding = pos.side*pos.qty*b.open*b.funding_rate
                 pos.margin -= funding
@@ -79,6 +81,18 @@ class PaperBroker:
                 events.append(self.close(pos,pos.take,b.timestamp,'take_profit'))
             elif b.timestamp >= pos.expires_at:
                 events.append(self.close(pos,b.close,b.timestamp,'time_exit'))
+        return events
+    def on_mark(self,price,ts,mint=SOL):
+        """Current observations can trigger exits, without inventing intrabar prices."""
+        events = []
+        for pos in list(self.book.positions):
+            if pos.mint != mint or ts < pos.opened_at:
+                continue
+            reason = ('observed_stop' if pos.side*(price-pos.stop) <= 0 else
+                      'observed_take' if pos.side*(price-pos.take) >= 0 else
+                      'time_exit' if ts >= pos.expires_at else None)
+            if reason:
+                events.append(self.close(pos,price,ts,reason))
         return events
     def trail(self,price,atr,mint=SOL):
         for p in self.book.positions:

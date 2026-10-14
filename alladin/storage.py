@@ -103,7 +103,7 @@ class Store:
         with self.connect() as db:
             rows = db.execute('SELECT seq,ts,kind,payload FROM events ORDER BY seq DESC LIMIT ?',(limit,)).fetchall()
         return [dict(seq=a,timestamp=b,kind=c,payload=json.loads(d)) for a,b,c,d in reversed(rows)]
-    def once(self,db,key,request,callback):
+    def lookup(self,db,key,request):
         if not isinstance(key,str) or not 1 <= len(key) <= 128:
             raise ValueError('Idempotency-Key obrigatória: 1–128 caracteres')
         digest = hashlib.sha256(canonical(request).encode()).hexdigest()
@@ -112,6 +112,12 @@ class Store:
             if old[0] != digest:
                 raise ValueError('Idempotency-Key reutilizada com conteúdo diferente')
             return json.loads(old[1])
+        return None
+    def once(self,db,key,request,callback):
+        old = self.lookup(db,key,request)
+        if old is not None:
+            return old
+        digest = hashlib.sha256(canonical(request).encode()).hexdigest()
         response = callback()
         db.execute('INSERT INTO requests VALUES (?,?,?)',(key,digest,canonical(response)))
         return json.loads(canonical(response))
