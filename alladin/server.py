@@ -12,6 +12,9 @@ from .transport import DataError
 from .prompts import PromptLibrary
 
 CONTRACT = {
+    'product_scope':'coinbase_catalog',
+    'discovery_commands':['catalog','instrument','instrument_book'],
+    'execution_scope':'legacy_SOL-USDC_spot_paper_only; multi-product execution migration incomplete',
     'version':'0.6','venue':'coinbase_advanced','chain':'solana','execution':'paper',
     'endpoints':{'GET /health':'process health; no portfolio data',
                  'GET /v1/diagnostics':'read-only Coinbase checks with failure phase; no ledger mutation',
@@ -26,6 +29,9 @@ CONTRACT = {
                  'GET /v1/audit/verify':'verify event hash chain',
                  'POST /v1/commands':'{command,args}; Bearer token + Idempotency-Key'},
     'commands':{
+        'catalog':{'args':['refresh (optional boolean)'],'result':'all public Coinbase product types; paginated, cached, capability-labelled; not account eligibility'},
+        'instrument':{'args':['product_id'],'result':'canonical product metadata, increments, contract details and actual execution support'},
+        'instrument_book':{'args':['product_id'],'result':'product-specific public book; research only, never authorizes execution'},
         'paper_tick':{'args':[],'result':'read-only Coinbase SOL-USDC market data only -> forward-only warmup or spot paper cycle; never signs or sends'},
         'ingest':{'args':['candle','snapshot'],'result':'closed bar -> agents -> risk -> pending paper action'},
         'execution_check':{'args':['action','check_id','purpose=execution_validation','proposal (OPEN only)'],'result':'explicit controlled paper OPEN/CLOSE; risk required; excluded from autonomous strategy statistics'},

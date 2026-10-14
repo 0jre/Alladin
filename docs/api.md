@@ -1,5 +1,9 @@
 # API reference
 
+Read-only `catalog`, `instrument` and `instrument_book` commands share the command
+transport described below. They cover the public Coinbase universe independently
+of legacy mint-based execution. See [schemas and capability limits](coinbase-universe.md).
+
 ## HTTP transport
 
 Start `serve` with a `LAB_API_TOKEN` of at least 32 characters. The standard-library

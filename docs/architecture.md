@@ -26,6 +26,7 @@ it does not create agents.
 
 | Module | Responsibility |
 |---|---|
+| `instruments.py` | Product-agnostic public catalog, canonical identity, metadata, research books and truthful capability reporting; independent of legacy account execution |
 | `providers.py` | Coinbase candles, full observations, book-only exit marks |
 | `transport.py` | Bounded HTTPS, retries, response limits, failure phases |
 | `models.py` | Validated data, proposals, portfolio, configuration |

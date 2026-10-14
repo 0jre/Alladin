@@ -1,7 +1,9 @@
 # Agent instructions for Alladin
 
-Alladin is a headless Python 3.11+ backend for Coinbase SOL-USDC spot **paper**
-research/execution. Read [README.md](README.md), then choose the appropriate path:
+Alladin is a headless Python 3.11+ backend targeting the Coinbase product universe.
+Discovery covers the full public catalog; the legacy executor remains SOL-USDC
+spot **paper** until product-specific adapters are implemented. Read
+[Coinbase universe](docs/coinbase-universe.md) and [README.md](README.md), then choose the appropriate path:
 
 - **Consume the service:** [.agents/CONSUMER.md](.agents/CONSUMER.md).
 - **Change the repository:** [.agents/MAINTAINER.md](.agents/MAINTAINER.md).
@@ -13,11 +15,15 @@ research/execution. Read [README.md](README.md), then choose the appropriate pat
 - Use only the standard library at runtime; do not add inference SDKs, model
   configuration, or AI-provider keys. Reasoning and optional subagents belong to
   the consuming session, not this backend.
-- Live collection is exclusively Coinbase native SOL / `SOL-USDC`. `chain=solana`
-  is asset metadata. Do not add RPC, on-chain collection, wallet connections,
-  signers, transaction submission, real orders, shorting, or enabled perpetuals.
-- Keep `execution=paper` and `allowed_markets=["spot"]`. Legacy fields support
-  historical reads; they do not establish on-chain verification.
+- Product scope is the Coinbase catalog, across tokens and instrument types;
+  do not introduce a SOL-only allowlist in generic discovery or new adapters.
+  Identify instruments by canonical `product_id`, not a blockchain mint.
+- Keep `execution=paper`. Product-specific adapters must implement currencies,
+  quantities, sessions, contract size, margin, settlement and funding where
+  applicable before advertising execution support. Never route an unknown type
+  into spot accounting. Legacy account constraints remain valid for those accounts.
+- Do not add RPC, wallet connections, signers or real order submission. Public
+  visibility does not prove account or regional trading eligibility.
 - All maintained documentation, agent instructions, examples, and public runtime
   text must be English. Preserve third-party originals and historical audit/data
   artifacts exactly; do not rewrite old evidence to satisfy a language policy.

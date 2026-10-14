@@ -1,11 +1,13 @@
 # Alladin documentation
 
-These guides describe the implemented Python backend for external-agent research
-and Coinbase SOL-USDC spot paper execution. They are not a development diary,
-an unimplemented roadmap, or a profitability claim.
+These guides describe the implemented Python backend for external-agent research,
+Coinbase catalog discovery and legacy SOL-USDC spot paper execution. The
+[product universe guide](coinbase-universe.md) distinguishes implemented discovery
+from the incomplete multi-product execution migration.
 
 | Task | Read |
 |---|---|
+| Discover all public Coinbase product types and actual capabilities | [Coinbase universe](coinbase-universe.md) |
 | Understand the product | [Product](product.md) |
 | Start a service and paper account | [Getting started](getting-started.md) |
 | Connect an external session | [API](api.md), [protocol](external-sessions.md), [consumer instructions](../.agents/CONSUMER.md) |

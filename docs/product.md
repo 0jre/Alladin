@@ -2,6 +2,11 @@
 
 ## Purpose and supported scope
 
+The product mandate covers the Coinbase product universe. Public catalog and
+instrument-book discovery are now generic; execution remains the legacy SOL-USDC
+spot path. See [actual capabilities and migration requirements](coinbase-universe.md).
+The table below describes that legacy execution path, not the overall mandate.
+
 Alladin makes observation, portfolio control, and paper accounting available to an
 external AI session through bounded commands. The session can inspect a durable
 account across interactions, coordinate analyses, submit a plan, and verify the

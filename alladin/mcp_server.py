@@ -26,6 +26,9 @@ def _tool(name, description, properties, required=()):
 def tools():
     optional = {}
     return [
+        _tool('catalog', 'Discover all public Coinbase product types without a SOL allowlist. Visibility is not execution support or account eligibility.', {'refresh':{'type':'boolean'}}),
+        _tool('instrument', 'Read product-specific metadata and implemented capabilities.', {'product_id':{'type':'string'}}, ('product_id',)),
+        _tool('instrument_book', 'Read a public Coinbase product book for research; does not authorize execution.', {'product_id':{'type':'string'}}, ('product_id',)),
         _tool('alladin_status', 'Read paper account, positions, pending activity and safety blocks. Does not send orders.', {}),
         _tool('alladin_diagnostics', 'Check current Coinbase access and failure phase without account mutation.', {}),
         _tool('alladin_performance', 'Observed net trade statistics, uncertainty and the descriptive 900-trade target; no profit guarantee.', {}),
@@ -81,7 +84,7 @@ def handle(service, message):
             'protocolVersion': version if version in ACCEPTED else PROTOCOL,
             'capabilities': {'tools': {'listChanged': False}, 'prompts': {'listChanged': False}},
             'serverInfo': {'name': 'alladin', 'version': __version__},
-            'instructions': 'Alladin supports Coinbase SOL-USDC spot paper execution only. paper_tick collects market observations; external sessions supply decisions. All fills are simulated. Never connect a wallet or sign transactions.',
+            'instructions': 'Alladin discovers the full public Coinbase product catalog through catalog, instrument and instrument_book. Check alladin_capabilities before proposing execution. The legacy paper executor remains SOL-USDC spot; other execution adapters are not implemented. All fills are simulated. External sessions supply reasoning; never connect a wallet or sign transactions.',
         }
     if method == 'ping':
         return {}

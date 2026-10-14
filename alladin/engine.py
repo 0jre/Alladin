@@ -31,6 +31,8 @@ class Service:
         self.fingerprint=config_fingerprint(cfg)
         self.command_lock = threading.RLock()
         self._provider = None
+        from .instruments import CoinbaseInstruments
+        self.instruments = CoinbaseInstruments()
     def revise_policy(self,previous_cfg):
         """Explicit, atomic revision of the return criterion; never reset risk history."""
         before,after=asdict(previous_cfg),asdict(self.cfg)
@@ -506,6 +508,10 @@ class Service:
         result['audit_verification_endpoint']='/v1/audit/verify'
         return result
     def command(self,name,args,key):
+        if name in {'catalog','instrument','instrument_book'}:
+            # Read-only instrument research is independent of legacy account
+            # mint/chain constraints and never creates a fill or resets cash.
+            return self.instruments.command(name,args)
         if name in {'paper_tick','prepare_decision','submit_decision','execution_check'}:
             with deadline(COLLECTION_TOTAL_SECONDS):
                 return self._bounded_command(name,args,key)

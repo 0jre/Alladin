@@ -2,7 +2,13 @@
 
 **A headless research and paper-trading backend operated by external AI agents.**
 
-Alladin turns public Coinbase **SOL-USDC spot** observations into structured market
+Alladin targets **the Coinbase product universe**, across tokens and product types.
+`catalog`, `instrument` and `instrument_book` discover public products and their
+metadata without a SOL allowlist. **Execution migration is incomplete:** the
+existing paper executor supports SOL-USDC spot only. See the exact
+[capability matrix and migration requirements](docs/coinbase-universe.md).
+
+The existing execution path turns public Coinbase SOL-USDC spot observations into structured market
 evidence, accepts decisions from an external agent session, checks them against
 deterministic execution and risk rules, and records simulated trades in an audited
 SQLite ledger. It is a Python service with HTTP, MCP over stdio, and CLI interfaces.
@@ -16,6 +22,7 @@ model selection, or AI-provider API keys**.
 
 | Capability | Implemented behavior |
 |---|---|
+| Instrument discovery | Full public Coinbase catalog across returned types, canonical product IDs, metadata, explicit capability blocks and product-specific research books |
 | Market evidence | Coinbase closed candles, current order book, recent trades, and estimated quote volume over completed 24-hour candles |
 | Quantitative context | Causal indicators, regime classification, and advisory trend, breakout, and mean-reversion candidates |
 | Agent coordination | Versioned prompts, an evidence registry, frozen decision tasks, four specialist assessments, and a structured manager plan |

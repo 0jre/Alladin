@@ -2,6 +2,11 @@
 
 ## Establish authority before commands
 
+Use `catalog`, `instrument` and `instrument_book` for the full public Coinbase
+universe. Read `alladin_capabilities`: listing is not execution support. See
+[product scope and remaining execution migration](../docs/coinbase-universe.md).
+The following operating workflow applies to the legacy SOL-USDC executor only.
+
 Identify the user's permitted account, execution mode, time window, and purpose.
 Inspect status and contract. Confirm `execution=paper`, Coinbase `SOL-USDC`, and the
 expected database/configuration. Distinguish strategy operation from explicit
