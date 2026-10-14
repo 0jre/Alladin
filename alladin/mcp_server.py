@@ -9,6 +9,7 @@ from . import __version__
 from .dispatch import execute
 from .server import CONTRACT
 from .transport import DataError
+from .prompts import PromptLibrary
 
 PROTOCOL = '2024-11-05'
 ACCEPTED = {'2024-11-05', '2025-03-26', '2025-06-18'}
@@ -26,6 +27,7 @@ def tools():
     optional = {}
     return [
         _tool('alladin_status', 'Carteira paper, posições, pendência e bloqueios. Não envia ordem.', {}),
+        _tool('alladin_performance', 'Estatística de trades líquidos, incerteza e meta observada de 900 entradas. Não promete lucro.', {}),
         _tool('alladin_audit', 'Eventos recentes de decisão e execução.', {'limit': {'type': 'integer'}}),
         _tool('alladin_contract', 'Contrato de comandos do Alladin.', {}),
         _tool('paper_tick', 'Coleta candles, livro e trades públicos da Coinbase mais snapshot RPC somente leitura da Solana; aquece com OHLCV real e processa no máximo uma barra paper spot. Não acessa carteira nem envia transação.', {}),
@@ -84,9 +86,20 @@ def handle(service, message):
     if method == 'tools/call':
         return _call(service, params)
     if method == 'prompts/list':
-        return {'prompts': []}
+        return {'prompts':[{'name':'alladin_'+role,'description':'Reviewed Solana spot paper finance role: '+role,
+                 'arguments':[{'name':'regime','description':'Optional trend, range or shock context','required':False}]}
+                 for role in sorted(PromptLibrary.ROLES)]}
     if method == 'prompts/get':
-        raise ValueError('Prompt não encontrado')
+        name=params.get('name','')
+        role=name.removeprefix('alladin_') if isinstance(name,str) else ''
+        if name!='alladin_'+role or role not in PromptLibrary.ROLES:
+            raise ValueError('Prompt não encontrado')
+        arguments=params.get('arguments') or {}
+        regime=arguments.get('regime')
+        if regime not in (None,'trend','range','shock'):
+            raise ValueError('Regime desconhecido')
+        return {'description':'Alladin Finance Prompt '+role,
+                'messages':[{'role':'user','content':{'type':'text','text':PromptLibrary().render(role,regime)}}]}
     raise ValueError('Método MCP desconhecido')
 
 
@@ -99,6 +112,8 @@ def _call(service, params):
     try:
         if name == 'alladin_status':
             result = service.status()
+        elif name == 'alladin_performance':
+            result = service.performance()
         elif name == 'alladin_audit':
             limit = arguments.get('limit', 20)
             if type(limit) is not int or not 1 <= limit <= 500:

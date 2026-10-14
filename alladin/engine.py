@@ -1,4 +1,5 @@
 import hashlib
+import json
 import threading
 import time
 from dataclasses import asdict, replace
@@ -11,6 +12,7 @@ from .storage import Store, canonical
 from .universe import seed_primary, classify_snapshot
 from .providers import CoinbaseMarket, collect
 from .transport import DataError
+from .evaluation import assess_trades
 
 class Service:
     """One persistent state machine, serialized by SQLite write transactions."""
@@ -53,7 +55,11 @@ class Service:
             self.council.client.calls = max(getattr(self.council.client,'calls',0),state.get('llm_calls',0))
         if hasattr(self.council,'memory'):
             self.council.memory = list(state.get('memory',[]))
-        p,audit = self.council.decide(f,s,book,self.cfg,end)
+        evidence_features=dict(f)
+        if state.get('history'):
+            evidence_features['bar_closed_at']=state['history'][-1]['timestamp']+self.cfg.timeframe_seconds
+        evidence_features['timeframe_seconds']=self.cfg.timeframe_seconds
+        p,audit = self.council.decide(evidence_features,s,book,self.cfg,end)
         if hasattr(self.council,'client'):
             state['llm_calls'] = self.council.client.calls
         return replace(p,mint=s.mint),audit
@@ -62,12 +68,18 @@ class Service:
             if isinstance(e,dict) and e.get('event') == 'CLOSE':
                 state['memory'].append(dict(mint=e.get('mint'),side=e.get('side'),net_pnl=e.get('net_pnl'),reason=e.get('reason')))
         state['memory'] = state['memory'][-20:]
-    def _execute_entry(self,broker,p,a,price,ts,state):
+    def _execute_entry(self,broker,p,a,price,ts,state,decision_audit=None,source=None):
         if self.cfg.execution != 'paper':
             raise ValueError('Alladin só permite fills paper; execução externa não existe')
         if p.market != 'spot':
             raise ValueError('Alladin só permite posições spot')
-        return broker.open(p,a,price,ts)
+        event=broker.open(p,a,price,ts)
+        decision=(state.get('last_decision') or {}).get('council',{}) if decision_audit is None else decision_audit
+        event['decision_context']=dict(agent_mode=self.council.mode,model=decision.get('model'),
+            prompt_bundle_sha256=(decision.get('prompt_pack') or {}).get('bundle_sha256'),
+            evidence_sha256=decision.get('evidence_sha256'))
+        event['source']=source or (state.get('snapshot') or {}).get('source')
+        return event
     def _flatten_known(self,broker,state,ts,reason):
         marks = {}
         if state.get('last_price') is not None:
@@ -232,6 +244,32 @@ class Service:
                     llm_calls_persisted=state.get('llm_calls',0),
                     universe={k:v['status'] for k,v in state.get('universe',{}).items()},
                     blocked_mints=sorted(state.get('blocked_mints',{})))
+    def performance(self):
+        with self.store.connect() as db:
+            db.execute('BEGIN')
+            state=self._load(db)
+            trades=[]
+            entries={}
+            for row in db.execute('SELECT payload FROM events ORDER BY seq'):
+                payload=json.loads(row[0])
+                for event in payload.get('events',[]):
+                    if event.get('event')=='OPEN':
+                        entries[event['position_id']]=event
+                    elif event.get('event')=='CLOSE':
+                        entry=entries.pop(event['position_id'],{})
+                        trades.append({**event,'decision_context':entry.get('decision_context'),
+                                       'entry_source':entry.get('source')})
+        source=(state.get('snapshot') or {}).get('source')
+        result=assess_trades(trades,source,self.council.mode)
+        book=Portfolio.restore(state['portfolio'])
+        result['open_positions_not_scored']=len(book.positions)
+        result['imported_roundtrips_not_scored']=max(0,book.total_closed-len(trades))
+        if book.positions or result['imported_roundtrips_not_scored']:
+            result['target']['measured_claim_supported']=False
+            result['limitations'].append('Open positions or imported trades without complete events prevent a complete-history validation claim.')
+        result['initial_usdc']=self.cfg.initial_usdc
+        result['audit_verification_endpoint']='/v1/audit/verify'
+        return result
     def command(self,name,args,key):
         if name == 'paper_tick':
             with self.command_lock:
@@ -469,7 +507,8 @@ class Service:
         if name == 'analyze':
             if args:
                 raise ValueError('analyze não aceita argumentos')
-            p,audit = self.council.decide(f,s,book,self.cfg,now)
+            p,audit = self._decide(state,f,s,book,now)
+            self.store.save(db,state)  # persist analysis call budget; no trade is scheduled
             result = dict(features=f,snapshot=asdict(s),proposal=asdict(p),council=audit,
                           approval=asdict(approve(p,f,s,book,self.cfg,now)),as_of=now,
                           wallclock_age_seconds=int(time.time())-now)
@@ -493,6 +532,8 @@ class Service:
             raise DataError('Snapshot Solana futuro ou stale')
         if b.timestamp+self.cfg.timeframe_seconds > now+5:
             raise ValueError('Barra OHLCV ainda aberta')
+        if s.timestamp < b.timestamp+self.cfg.timeframe_seconds:
+            raise DataError('Cotação anterior ao fechamento do candle; ciclo bloqueado')
         if state['last_timestamp'] is None or b.timestamp != state['last_timestamp']+self.cfg.timeframe_seconds:
             raise ValueError('Barra paper fora de sequência; sem preenchimentos retroativos')
         digest = hashlib.sha256(canonical(payload).encode()).hexdigest()
@@ -516,7 +557,7 @@ class Service:
             events.extend(broker.close(pos,s.price,s.timestamp,'agent_exit')
                           for pos in list(book.positions) if pos.market == p.market and pos.mint == b.mint)
         elif p.action in {'LONG','SHORT'} and approval.approved and not book.halted:
-            events.append(self._execute_entry(broker,p,approval,s.price,s.timestamp,state))
+            events.append(self._execute_entry(broker,p,approval,s.price,s.timestamp,state,decision_audit=audit,source=s.source))
         decision = dict(timestamp=s.timestamp,mint=b.mint,proposal=asdict(p),
                         approval=asdict(approval),council=audit,
                         diagnostics=dict(ready=f.get('ready',False),regime=f.get('regime'),

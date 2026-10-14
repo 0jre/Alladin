@@ -14,3 +14,6 @@ alladin = "alladin.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["alladin*"]
+
+[tool.setuptools.package-data]
+alladin = ["finance_prompts/*.md", "finance_prompts/catalog.json", "finance_prompts/roles/*.md", "finance_prompts/skills/*.md"]

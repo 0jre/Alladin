@@ -220,9 +220,13 @@ class AgentTests(unittest.TestCase):
                 if name=='manager':
                     d=asdict(proposal())
                     d.pop('mint',None)
+                    d.update(evidence_keys=['features.price','snapshot.price'],invalidation='Observed trend reversal',
+                             entry_conditions=['features.price'],exit_conditions=['configured_stop','configured_take'],
+                             counterevidence_keys=[])
                     return d
-                return dict(stance='LONG',score=.8,summary='Brief assessment',evidence_keys=['price'],concerns=[])
-        p,a=Council('llm',client=Fake()).decide(feature_fixture(),snapshot(),Portfolio(10000,10000,10000),Config(),1000)
+                return dict(stance='LONG',score=.8,summary='Brief assessment',evidence_keys=['features.price'],concerns=[],
+                            missing_data=[],invalidation='Trend reversal',risk_flags=[],blocking=False,score_is_probability=False)
+        p,a=Council('llm',client=Fake()).decide(feature_fixture(),snapshot(),Portfolio(10000,10000,10000),Config(min_reward_risk=1.5),1000)
         self.assertEqual(p.action,'LONG')
         self.assertEqual(len(a['reports']),5)
     def test_refusal_holds(self):
@@ -358,6 +362,19 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(body['execution'],'paper')
         self.assertEqual(body['venue'],'coinbase_advanced')
         with self.request('/v1/contract') as r:self.assertIn('ingest',json.load(r)['commands'])
+    def test_finance_prompts_and_performance_are_authenticated_read_only(self):
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.request('/v1/prompts',auth=False)
+        self.assertEqual(error.exception.code,401)
+        with self.request('/v1/prompts/manager?regime=trend') as response:
+            data=json.load(response)
+            self.assertIn('PAPER',data['instructions'])
+            self.assertEqual(data['metadata']['version'],'1.0.0')
+        with self.request('/v1/performance') as response:
+            data=json.load(response)
+            self.assertEqual(data['closed_roundtrips'],0)
+            self.assertFalse(data['target']['measured_claim_supported'])
+        self.assertEqual(self.service.store.verify_audit()['count'],0)
     def test_unknown_command_not_shell(self):
         with self.assertRaises(urllib.error.HTTPError) as e:
             self.request('/v1/commands',{'command':'exec','args':{'cmd':'ls'}})

@@ -3,7 +3,24 @@
     "type": "function",
     "name": "alladin_status",
     "description": "Read the Solana spot paper portfolio, latest decision, open positions and circuit breakers from GET /v1/status.",
-    "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": false},
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "strict": true
+  },
+  {
+    "type": "function",
+    "name": "alladin_performance",
+    "description": "Read net closed-trade statistics, uncertainty, sample adequacy and the 900-entry research target from GET /v1/performance. It does not guarantee returns.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
     "strict": true
   },
   {
@@ -13,11 +30,34 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "command": {"type": "string", "enum": ["paper_tick", "ingest", "analyze", "evaluate", "halt", "finalize", "universe", "admit", "watch", "unwatch"]},
-        "args": {"type": "object", "description": "Arguments exactly matching GET /v1/contract; use an empty object for commands with no arguments."},
-        "idempotency_key": {"type": "string"}
+        "command": {
+          "type": "string",
+          "enum": [
+            "paper_tick",
+            "ingest",
+            "analyze",
+            "evaluate",
+            "halt",
+            "finalize",
+            "universe",
+            "admit",
+            "watch",
+            "unwatch"
+          ]
+        },
+        "args": {
+          "type": "object",
+          "description": "Arguments exactly matching GET /v1/contract; use an empty object for commands with no arguments."
+        },
+        "idempotency_key": {
+          "type": "string"
+        }
       },
-      "required": ["command", "args", "idempotency_key"],
+      "required": [
+        "command",
+        "args",
+        "idempotency_key"
+      ],
       "additionalProperties": false
     },
     "strict": false

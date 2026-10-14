@@ -25,5 +25,7 @@ class BackendClient:
             return json.load(response)
     def status(self):
         return self._request('/v1/status')
+    def performance(self):
+        return self._request('/v1/performance')
     def command(self,name,args,key):
         return self._request('/v1/commands',{'command':name,'args':args},key)

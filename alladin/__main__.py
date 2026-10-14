@@ -37,6 +37,7 @@ def main():
     sub.add_parser('paper-tick')
     sub.add_parser('mcp')
     sub.add_parser('status'); sub.add_parser('contract')
+    sub.add_parser('performance')
     exp = sub.add_parser('export'); exp.add_argument('--output',default='results')
     sub.add_parser('halt')
     val=sub.add_parser('validate'); val.add_argument('--feed',required=True); val.add_argument('--output',default='results/validation');val.add_argument('--folds',type=int,default=3)
@@ -119,6 +120,8 @@ def main():
                 return 1 if worker_failed.is_set() else 0
             if args.command == 'status':
                 result = service.status()
+            elif args.command == 'performance':
+                result = service.performance()
             elif args.command == 'halt':
                 result = service.command('halt',{},'cli-halt-'+str(time.time_ns()))
             elif args.command == 'export':

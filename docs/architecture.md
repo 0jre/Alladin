@@ -37,3 +37,44 @@ O servidor pode iniciar seu worker com `serve --paper-worker`. Consulte [operaç
 ## Dimensionamento pelo saldo
 
 O perfil `available_balance` investe o caixa disponível depois do custo de entrada. O risco aprova o saldo inteiro ou recusa a entrada; não o reduz automaticamente. O perfil padrão limita a perda estimada a 2% por operação, respeita o orçamento diário restante de 2% e drawdown de 6%. O perfil `risk_budget` anterior mantém seus fingerprints e regras de dimensionamento. Mudança de perfil exige nova sessão e transferência auditada para continuidade do saldo.
+
+
+## Finance Prompt Engineering
+
+O clone solicitado está em `finance_prompt_engineering/upstream`, sem `.git` e com
+hashes em `UPSTREAM.json`. O runtime usa apenas a adaptação revisada e versionada
+em `alladin/finance_prompts`, incluída no pacote Python. Veja o [mapa de adaptação](../finance_prompt_engineering/ADAPTATIONS.md).
+
+```mermaid
+flowchart TD
+  A["Candles fechados e snapshot verificado"] --> B["Envelope e registro de evidências"]
+  P["Bundle de prompts com hashes"] --> C["Mercado, Solana e fluxo independentes"]
+  B --> C
+  B --> E["Prévia determinística: risco, custos e estresse"]
+  C --> D["Contestador e pré-mortem"]
+  E --> D
+  D --> M["Gestor com plano estruturado"]
+  M --> R["Consenso, referências e risco final"]
+  R --> O["Paper broker e auditoria"]
+```
+
+Os primeiros três relatórios não recebem respostas dos pares. O contestador vê os
+três e o gestor vê a revisão. Referências inexistentes, plano inválido, veto,
+desacordo direcional ou alteração incompatível com o risco impedem entrada. Sem
+candidato economicamente viável, o conselho se abstém antes de gastar chamadas.
+
+O backend mantém autoridade sobre dimensão, custos, loss budget e execução.
+Cada entrada registra o modelo, bundle e hash de evidência; a avaliação não junta
+modelos diferentes para sustentar uma alegação de taxa de acerto. `analyze`
+também persiste o consumo de chamadas LLM, sem agendar operação.
+
+`/v1/performance` usa operações encerradas do histórico auditável, incluindo
+perdas e custos, distingue origem controlada e apresenta intervalo de Wilson.
+Posições abertas e transferências sem histórico completo impedem alegações de
+validação completa. A qualificação é estatística condicional, não promessa.
+
+A camada de prompts não fornece notícias, macro ou liquidez DEX que não tenham
+sido coletadas. O campo de lacunas informa essas ausências. O conselho LLM ainda
+requer chave/modelo e roda dentro da transação existente; cotação vencida durante
+a análise bloqueia novas entradas. Nenhuma taxa de acerto real foi demonstrada
+pela importação ou pelos testes de modelos falsos.

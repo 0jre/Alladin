@@ -1,0 +1,2 @@
+# Research Validation Skill
+A strategy requires chronological out-of-sample evaluation, execution-cost stress and complete trade accounting. Do not optimize on the evaluation period or use later snapshots for earlier decisions. Compare net expectancy, payoff asymmetry, drawdown, costs and sample size alongside hit rate. Wilson intervals are descriptive under binomial assumptions; correlated trades weaken inference. Fixture or controlled-entry results validate software execution, not strategy performance. A research target is not an instruction to force 900 trades.

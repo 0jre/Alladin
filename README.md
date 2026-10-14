@@ -1,5 +1,9 @@
 # Alladin
 
+O módulo [Alladin Finance Prompt Engineering](finance_prompt_engineering/README.md) incorpora o repositório solicitado sem `.git`, preserva os originais e fornece uma biblioteca ativa de prompts para o conselho LLM. Há cinco papéis com evidências citáveis, contestação, plano estruturado e revalidação determinística de risco.
+
+`GET /v1/prompts`, `GET /v1/prompts/{role}` e MCP `prompts/list`/`prompts/get` disponibilizam a biblioteca revisada. `GET /v1/performance` e `python -m alladin performance` mostram estatísticas líquidas e incerteza. A meta de 898–899 acertos em 900 operações é apenas um critério de pesquisa, não uma capacidade demonstrada nem promessa de lucro.
+
 Backend Python de pesquisa e paper trading **exclusivamente na Solana mainnet**, em spot. Não há UI, conexão com Phantom/OKX, chave de carteira, assinatura ou envio de transações. Os agentes chamam comandos HTTP/MCP; o backend coleta evidências, calcula sinais, valida risco e registra decisões/fills simulados.
 
 ## O que significa paper-live

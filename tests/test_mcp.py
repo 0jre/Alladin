@@ -36,7 +36,7 @@ class MCPTests(unittest.TestCase):
         self.assertNotIn('coinbase_order', names)
         self.assertNotIn('market_radar', names)
         prompts = handle(self.service, {'jsonrpc': '2.0', 'id': 4, 'method': 'prompts/list'})
-        self.assertEqual(prompts['prompts'], [])
+        self.assertEqual({p['name'] for p in prompts['prompts']},{'alladin_market','alladin_onchain','alladin_flow','alladin_challenger','alladin_manager'})
 
     def test_stdio_loop_answers_and_ignores_notifications(self):
         incoming = io.BytesIO()

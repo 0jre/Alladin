@@ -5,3 +5,6 @@ __pycache__/
 results/
 .venv/
 *.worker.lock
+build/
+*.egg-info/
+pip-ephem-wheel-cache*/

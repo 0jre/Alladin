@@ -9,11 +9,15 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlsplit,parse_qs
 from .dispatch import execute
 from .transport import DataError
+from .prompts import PromptLibrary
 
 CONTRACT = {
     'version':'0.6','venue':'coinbase_advanced','chain':'solana','execution':'paper',
     'endpoints':{'GET /health':'process health; no portfolio data',
                  'GET /v1/status':'persistent portfolio state',
+                 'GET /v1/performance':'closed-trade statistics, uncertainty and 900-entry research target; no profit guarantee',
+                 'GET /v1/prompts':'reviewed finance prompt-pack metadata',
+                 'GET /v1/prompts/{role}?regime=trend':'reviewed finance instructions for an allowed agent role',
                  'GET /ready':'paper worker and feed readiness; no portfolio data',
                  'GET /v1/health':'authenticated worker and session diagnostics',
                  'GET /v1/audit?limit=100':'decision and execution events',
@@ -85,6 +89,19 @@ def build_server(service,port=8080,token=None,runner=None):
             try:
                 if parsed.path == '/v1/status':
                     result = service.status()
+                elif parsed.path == '/v1/performance':
+                    result = service.performance()
+                elif parsed.path == '/v1/prompts':
+                    result = PromptLibrary().metadata()
+                elif parsed.path.startswith('/v1/prompts/'):
+                    role=parsed.path.rsplit('/',1)[-1]
+                    regime=parse_qs(parsed.query).get('regime',[None])[0]
+                    if role not in PromptLibrary.ROLES:
+                        return self.send_json(404,{'error':'unknown_prompt_role'})
+                    if regime not in (None,'trend','range','shock'):
+                        raise ValueError('Regime desconhecido')
+                    library=PromptLibrary()
+                    result=dict(role=role,instructions=library.render(role,regime),metadata=library.metadata(regime))
                 elif parsed.path == '/v1/health':
                     state = service.status()
                     result = dict(worker=runner.health() if runner else {'running':False,'ready':False},

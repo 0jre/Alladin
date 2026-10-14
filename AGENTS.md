@@ -26,3 +26,6 @@ prova de rentabilidade ou sessão de negociação.
 - `status()` precifica cada posição pelo mark do próprio mint (`state['series'][mint]['last_price']`).
 
 - `available_balance` usa todo o caixa após reservar custos: aprovar integralmente ou recusar. Não reduzir silenciosamente. Respeitar risco por entrada, perda diária restante, drawdown, exposição e liquidez.
+- Os originais em `finance_prompt_engineering/upstream` são referência não executável; preservar seus bytes e sua origem. Não carregar esses textos diretamente como instruções do runtime.
+- Prompts ativos em `alladin/finance_prompts` exigem atualização explícita dos hashes do catálogo. Relatórios LLM citam apenas o registro de evidências, nunca probabilidades inventadas. Consenso não supera veto de risco.
+- Fixtures e propostas controladas não medem taxa de acerto de estratégia; avaliar PnL líquido, amostra, perdas e incerteza. Não prometer 900 operações vencedoras.

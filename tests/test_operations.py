@@ -171,6 +171,18 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual(service.status()['llm_calls_persisted'],5)
         self.assertEqual(service.status()['positions'],[])
 
+    def test_fresh_quote_before_the_closed_bar_is_not_a_valid_entry_mark(self):
+        now=1800000065
+        bars=[Candle(1800000000-80*60+i*60,100,101,99,100,10000) for i in range(81)]
+        snap=Snapshot(now-10,price=100,liquidity_usd=10_000_000,volume_24h_usd=50_000_000,
+                      account_checked=True,cluster_verified=True,source='coinbase_advanced_sol_spot')
+        service=Service(self.cfg,self.path)
+        with patch.object(service,'_collect_paper_data',return_value={'candles':bars[:80],'snapshot':None}),patch('alladin.engine.time.time',return_value=now-60):
+            service.command('paper_tick',{},'warm')
+        with patch.object(service,'_collect_paper_data',return_value={'candles':bars,'snapshot':snap}),patch('alladin.engine.time.time',return_value=now):
+            with self.assertRaises(DataError):service.command('paper_tick',{},'old-quote')
+        self.assertEqual(service.status()['positions'],[])
+
     def test_stale_wrong_product_and_nonfinite_books_are_rejected(self):
         now=1800000000
         for product,observed,bid in [('BTC-USD',now,'99'),('SOL-USDC',now-100,'99'),('SOL-USDC',now,'NaN')]:

@@ -1,0 +1,95 @@
+{
+  "url": "https://github.com/devfinprojects/awesome-claude-finance-prompts",
+  "commit": "277112633031228587af3525557b088659a4df4f",
+  "tree": "e8b2a6b1c16e96f8ff48b2b8a1d057850bf0b0a7",
+  "import_method": "git clone --depth 1; nested .git removed after recording provenance",
+  "license": "No LICENSE file or license declaration found; no license grant inferred.",
+  "original_files_modified": false,
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "9b45dfd0a57bc879f7e7e2d4339c996504e63bdd7379805128b544c682e17997",
+      "bytes": 2700
+    },
+    {
+      "path": "prompts/1-the-equity-research-desk.md",
+      "sha256": "7216ea53cf0ebccf9b164eda18cd4f55dc6679f7384d631d52f7554cec7bd090",
+      "bytes": 10985
+    },
+    {
+      "path": "prompts/10-the-esg-and-climate-desk.md",
+      "sha256": "6c2dea39820b7c4f231109167d8480066ff9e338565f8d8c7239b15d716ea977",
+      "bytes": 11836
+    },
+    {
+      "path": "prompts/11-the-fixed-income-and-credit-desk.md",
+      "sha256": "bcf7428eeff1aadce0b64cb3e34b7ca485ac8986e24dfc1099b72e6a0ee5e219",
+      "bytes": 12860
+    },
+    {
+      "path": "prompts/12-claude-model-family.md",
+      "sha256": "6eb0c0fa87c40ea16b751fd0b23d7a83e576d772552c2a53af6196e930932e0d",
+      "bytes": 10871
+    },
+    {
+      "path": "prompts/13-claude.ai-platform-projects-and-deep-research.md",
+      "sha256": "73a47d78b4b5470811f2d9044bdfeaba36da1ee82a45e359bbc651e9622aa206",
+      "bytes": 8704
+    },
+    {
+      "path": "prompts/14-claude-code-for-quantitative-finance.md",
+      "sha256": "358a4b63e344b11fff8d91dc8394ae69001f9f70ca5eab2c42c2db9ee8302834",
+      "bytes": 11544
+    },
+    {
+      "path": "prompts/15-claude-cowork-plugins-and-mcp-connectors.md",
+      "sha256": "e6733ac84f959f034f090a653c5551e80f8462af3acb716ce39676b4ab27c8ac",
+      "bytes": 12244
+    },
+    {
+      "path": "prompts/16-prompt-engineering-masterclass.md",
+      "sha256": "1c72169fc9eab4397ff2e9f18d899a6cb60df5d2840c5fafbe85633d73a7a739",
+      "bytes": 12002
+    },
+    {
+      "path": "prompts/2-the-manda;-valuation-desk.md",
+      "sha256": "89e2edb1a426c41ed340246d2333ae1f50393a3c6632031302d8e59d4616868f",
+      "bytes": 10636
+    },
+    {
+      "path": "prompts/3-the-macro-risk-desk.md",
+      "sha256": "43fad9841e34bd8d3d3e70fcc6f07c15808ebab7c7fcc87ddabb4239fcd257e5",
+      "bytes": 10762
+    },
+    {
+      "path": "prompts/4-the-earnings-intelligence-desk.md",
+      "sha256": "1028ae4d47617fbd194c6a47ad67b166447113d75c00ab979923934a526a3177",
+      "bytes": 11196
+    },
+    {
+      "path": "prompts/5-the-portfolio-strategy-desk.md",
+      "sha256": "fe321be5c6dfc83854abcf64ec510b60ea6726f90759ecb4e4c18e8bcf2694de",
+      "bytes": 10940
+    },
+    {
+      "path": "prompts/6-the-quant-trading-desk.md",
+      "sha256": "67424cd1f21d387c5d780b9aa7f3f9e06c8ff274c78940a8533ae39329b5d4ed",
+      "bytes": 11241
+    },
+    {
+      "path": "prompts/7-the-strategy-consulting-desk.md",
+      "sha256": "89ce52866bae56cdfb53491b1bdf26c3b33c8d83879906b6262c03974fbd0a12",
+      "bytes": 11145
+    },
+    {
+      "path": "prompts/8-the-endowment-strategy-desk.md",
+      "sha256": "0284b6930430424455f60c89d1f66935b5758c0d8e47d25b66dd3c7bd567bbf1",
+      "bytes": 11914
+    },
+    {
+      "path": "prompts/9-the-sovereign-wealth-desk.md",
+      "sha256": "6b5ce65b996e0959beb7d4f5e535d80f6d67c8585e4669fc2ca15fe4d8f71f91",
+      "bytes": 12086
+    }
+  ]
+}

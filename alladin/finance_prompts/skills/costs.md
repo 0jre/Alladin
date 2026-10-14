@@ -1,0 +1,2 @@
+# Economics Skill
+Read candidate_economics instead of estimating quantities yourself. Compare gross stop/target with configured variable and fixed roundtrip costs. Net reward/risk and estimated stop loss are deterministic approximations; gap loss can be larger. A stress result tests assumptions, not executable liquidity. Missing out-of-sample expectancy remains unknown. A small positive price move can still produce a net loss after costs.
