@@ -217,3 +217,63 @@ O transporte Coinbase tem orçamento de 20 segundos por requisição e 45 para a
 coleta completa. O livro continua sendo obtido por último: aumentar a espera de
 rede não aumenta a idade permitida da cotação, que permanece no máximo 30 segundos.
 Uma janela demo de 60 segundos limita também cada comando ao tempo restante.
+
+## Checagem operacional com cotações atuais
+
+`execution_check` é uma ação explícita de validação de execução spot paper. Ela
+não é uma estratégia, não inventa confluência e não é acionada automaticamente
+quando uma estratégia decide HOLD. Exige `purpose=execution_validation`, um
+`check_id` e ação OPEN ou CLOSE. OPEN também exige proposal com LONG, spot,
+strategy execution_validation e horizonte máximo de quatro barras.
+
+O backend aquece/atualiza dados reais Coinbase, exige cotação fresca e histórico
+fechado atual, aplica o mesmo approve, custos, saldo integral e limites de perda.
+Recusa abertura se já há posição/checagem ativa, replay, sessão rules, halt,
+risco excessivo ou dados inválidos. CLOSE só alcança a posição identificada pela
+checagem correspondente, nunca outra posição. Repita cada ação com a mesma chave
+de idempotência após falha de conexão; consulte execution_check em status para
+recuperar uma checagem aberta. Falha de fechamento mantém a posição registrada,
+sem fabricar liquidação ou ocultar exposição.
+
+Por HTTP/MCP, OPEN recebe:
+
+```json
+{
+  "command": "execution_check",
+  "args": {
+    "action": "OPEN",
+    "check_id": "identificador-unico-do-teste",
+    "purpose": "execution_validation",
+    "proposal": {
+      "action": "LONG", "market": "spot", "confidence": 0.75,
+      "stop_fraction": 0.013, "take_fraction": 0.0286, "horizon_bars": 1,
+      "thesis": "Checagem operacional controlada; sem alegacao de sinal",
+      "strategy": "execution_validation"
+    }
+  }
+}
+```
+
+Os parâmetros são exemplo de teste, não recomendação ou sinal. Uma entrada pode
+ser recusada integralmente pelo risco. CLOSE usa action CLOSE, o mesmo check_id e
+purpose, sem proposal. Checagens não passam pelo consenso de alpha porque validam
+somente execução; essa distinção é explícita na ferramenta e nos eventos.
+
+Entradas são rotuladas controlled_execution_check e validation_only; registram
+separadamente quote_source Coinbase. O dinheiro, custos, perdas e cooldown afetam
+a carteira normalmente. performance separa execution_validation_roundtrips e seu
+PnL das operações de estratégia; memory não usa checagens como evidência de edge.
+Nenhuma negociação real ou chamada a carteira é implementada.
+
+## Coleta e proteção entre candles
+
+A preparação reaproveita observação Coinbase de até 15 segundos apenas quando o
+contexto fechado ainda é válido, preservando o timestamp original. Submissão
+externa continua buscando cotação nova e reaplicando o risco. Uma coleta que
+atravessa fechamento de barra atualiza os candles e recusa dados expirados.
+Reaquecimento de gap conserva o snapshot atual coletado para a preparação.
+
+Com posição aberta, paper_tick coleta também o mark quando não surgiu candle
+novo; stops, saídas por tempo e circuit breakers são processados nesse mark real.
+Isso depende de o consumidor/worker continuar chamando paper_tick e de dados
+válidos; não garante preço de stop nem disponibilidade contínua da fonte.

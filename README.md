@@ -120,3 +120,5 @@ O perfil demo agora declara retorno/risco líquido mínimo de **1,5**, mantendo
 alvos não foram alterados. Essa política precisa de avaliação fora da amostra;
 não demonstra rentabilidade. Carteiras existentes usam revisão explícita auditada
 com `revise-policy --from-config`, preservando saldo e perdas já consumidas.
+
+A checagem explícita `execution_check` permite validar OPEN/CLOSE paper com preços atuais, mantendo o risco. Ela é rotulada como teste controlado e não integra estatísticas de estratégia. Consulte [operação](docs/operations.md). Posições também são acompanhadas por mark entre candles quando o worker/consumidor está ativo.

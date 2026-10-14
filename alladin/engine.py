@@ -62,10 +62,80 @@ class Service:
             self.store.event(db,int(time.time()),'policy_revision',result)
             return result
 
+    def _require_fresh_mark(self,s):
+        now=int(time.time())
+        if s.source!='coinbase_advanced_sol_spot' or s.product_id!='SOL-USDC' or s.mint!=self.cfg.mint:
+            raise ValueError('Fonte/produto inválidos')
+        if not -5<=now-s.timestamp<=min(30,self.cfg.max_snapshot_age_seconds):
+            raise DataError('Cotação expirada ou futura; execução bloqueada')
+
+    def _validate_execution_check(self,args):
+        required={'action','check_id','purpose'}
+        if not isinstance(args,dict) or args.get('action') not in {'OPEN','CLOSE'}:
+            raise ValueError('Checagem exige OPEN ou CLOSE')
+        if args['action']=='OPEN':required.add('proposal')
+        if set(args)!=required or args.get('purpose')!='execution_validation':
+            raise ValueError('Finalidade explícita execution_validation obrigatória')
+        if not isinstance(args['check_id'],str) or not 1<=len(args['check_id'])<=100:
+            raise ValueError('check_id inválido')
+        if self.cfg.execution!='paper' or self.council.mode!='external':
+            raise ValueError('Checagem permite somente sessão externa em paper')
+        if args['action']=='OPEN':
+            p=Proposal(**args['proposal'])
+            if p.action!='LONG' or p.market!='spot' or p.strategy!='execution_validation' or p.horizon_bars>4:
+                raise ValueError('Plano de checagem deve ser LONG spot execution_validation, horizonte até 4 barras')
+
+    def _execution_check(self,db,state,book,args,data):
+        self._validate_execution_check(args)
+        if args['action']=='OPEN':
+            if book.positions or state.get('execution_check'):
+                raise ValueError('Checagem exige carteira sem posição/checagem aberta')
+            self._command(db,'paper_tick',{},data)
+            state=self._load(db);book=Portfolio.restore(state['portfolio'])
+        mark=data['snapshot'];self._require_fresh_mark(mark)
+        broker=PaperBroker(book,self.cfg);now=int(time.time());events=[]
+        if args['action']=='OPEN':
+            if not state['history'] or now-(state['last_timestamp']+self.cfg.timeframe_seconds)>self.cfg.timeframe_seconds:
+                raise DataError('Contexto fechado expirou; atualize feed antes da checagem')
+            f=features([Candle(**row) for row in state['history']])
+            p=Proposal(**args['proposal'])
+            update_breakers(book,self.cfg,mark.price,now)
+            approval=approve(p,f,mark,book,self.cfg,now,mark.price,state['universe'].get(mark.mint))
+            if not approval.approved:
+                raise ValueError('Checagem recusada por risco: '+','.join(approval.reasons))
+            event=self._execute_entry(broker,p,approval,mark.price,now,state,
+                decision_audit={'protocol':'paper-execution-check-v1','purpose':'execution_validation'},
+                source='controlled_execution_check')
+            event['quote_source']=mark.source
+            event['approval']=asdict(approval)
+            event['proposal']=asdict(p)
+            event['validation_only']=True
+            events.append(event)
+            state['execution_check']={'check_id':args['check_id'],'position_id':event['position_id']}
+        else:
+            active=state.get('execution_check')
+            if not active or active['check_id']!=args['check_id']:
+                raise ValueError('Checagem não existe ou check_id não corresponde')
+            pos=next((x for x in book.positions if x.id==active['position_id']),None)
+            if pos is not None:
+                events.append(broker.close(pos,mark.price,now,'execution_validation_exit'))
+            state['execution_check']=None
+        update_breakers(book,self.cfg,mark.price,now)
+        state.update(portfolio=book.serialize(),snapshot=asdict(mark),last_price=mark.price,
+                     external_task=None,pending=None)
+        state['curve'].append(dict(timestamp=now,equity=book.equity(mark.price),price=mark.price,
+                                   gross=book.gross(mark.price),net=book.net(mark.price)))
+        state['curve']=state['curve'][-2000:]
+        result=dict(result='execution_check_completed',purpose='execution_validation',validation_only=True,
+                    action=args['action'],check_id=args['check_id'],events=events,quote_source=mark.source)
+        self.store.save(db,state)
+        self.store.event(db,now,'execution_check',result)
+        return result
+
     def _ensure(self,state):
         for key,default in [('series',{}),('pending_book',{}),('blocked_mints',{}),
                             ('universe',{}),('memory',[]),
-                            ('curve',[]),('history',[]),('external_task',None),
+                            ('curve',[]),('history',[]),('external_task',None),('execution_check',None),
                             ('bars_processed',0),('pending',None),('snapshot',None),
                             ('last_timestamp',None),('last_digest',None),
                             ('last_price',None),('last_decision',None)]:
@@ -86,6 +156,8 @@ class Service:
             return price
         return marks
     def _decide(self,state,f,s,book,end):
+        if state.get('execution_check'):
+            return replace(Proposal(thesis='Checagem controlada em andamento'),mint=s.mint),{'gate':'execution_validation','mode':self.council.mode}
         if book.halted:
             return replace(Proposal(thesis='Sessão bloqueada: '+book.halt_reason),mint=s.mint),{'gate':'halted','mode':self.council.mode}
         if hasattr(self.council,'memory'):
@@ -188,7 +260,7 @@ class Service:
 
     def _remember(self,state,events):
         for e in events:
-            if isinstance(e,dict) and e.get('event') == 'CLOSE':
+            if isinstance(e,dict) and e.get('event') == 'CLOSE' and e.get('strategy')!='execution_validation':
                 state['memory'].append(dict(mint=e.get('mint'),side=e.get('side'),net_pnl=e.get('net_pnl'),reason=e.get('reason')))
         state['memory'] = state['memory'][-20:]
     def _execute_entry(self,broker,p,a,price,ts,state,decision_audit=None,source=None):
@@ -362,7 +434,7 @@ class Service:
                     last_decision=state['last_decision'],
                     series={m:dict(bars_processed=s['bars_processed'],last_price=s['last_price'])
                             for m,s in state.get('series',{}).items()},
-                    external_task=state.get('external_task'),
+                    external_task=state.get('external_task'),execution_check=state.get('execution_check'),
                     universe={k:v['status'] for k,v in state.get('universe',{}).items()},
                     blocked_mints=sorted(state.get('blocked_mints',{})))
     def diagnostics(self):
@@ -385,10 +457,15 @@ class Service:
                         trades.append({**event,'decision_context':entry.get('decision_context'),
                                        'entry_source':entry.get('source')})
         source=(state.get('snapshot') or {}).get('source')
+        all_trades=trades
+        controls=[x for x in trades if x.get('entry_source')=='controlled_execution_check']
+        trades=[x for x in trades if x.get('entry_source')!='controlled_execution_check']
         result=assess_trades(trades,source,self.council.mode)
+        result['execution_validation_roundtrips']=len(controls)
+        result['execution_validation_net_pnl_usdc']=sum(x['net_pnl'] for x in controls)
         book=Portfolio.restore(state['portfolio'])
         result['open_positions_not_scored']=len(book.positions)
-        result['imported_roundtrips_not_scored']=max(0,book.total_closed-len(trades))
+        result['imported_roundtrips_not_scored']=max(0,book.total_closed-len(all_trades))
         if book.positions or result['imported_roundtrips_not_scored']:
             result['target']['measured_claim_supported']=False
             result['limitations'].append('Open positions or imported trades without complete events prevent a complete-history validation claim.')
@@ -396,19 +473,19 @@ class Service:
         result['audit_verification_endpoint']='/v1/audit/verify'
         return result
     def command(self,name,args,key):
-        if name in {'paper_tick','prepare_decision','submit_decision'}:
+        if name in {'paper_tick','prepare_decision','submit_decision','execution_check'}:
             with deadline(COLLECTION_TOTAL_SECONDS):
                 return self._bounded_command(name,args,key)
         return self._bounded_command(name,args,key)
 
     def _bounded_command(self,name,args,key):
         check_deadline()
-        if name == 'paper_tick':
+        if name in {'paper_tick','execution_check'}:
             with self.command_lock:
                 return self._serialized_command(name,args,key)
         return self._serialized_command(name,args,key)
     def _serialized_command(self,name,args,key):
-        allowed = {'ingest','paper_tick','analyze','evaluate','halt','finalize','universe','admit','watch','unwatch','prepare_decision','submit_decision'}
+        allowed = {'ingest','paper_tick','analyze','evaluate','halt','finalize','universe','admit','watch','unwatch','prepare_decision','submit_decision','execution_check'}
         if not isinstance(name,str) or name not in allowed:
             raise ValueError('Comando desconhecido ou não permitido')
         if not isinstance(args,dict):
@@ -427,7 +504,27 @@ class Service:
             raise ValueError('prepare_decision exige modo external e nenhum argumento')
         if name=='submit_decision' and (state.get('external_task') or {}).get('protocol')!='external-session-v2':
             raise ValueError('Tarefa de protocolo antigo ou ausente; execute prepare_decision novamente')
+        if name=='execution_check':
+            self._validate_execution_check(args)
+            if state.get('input_mode') not in (None,'paper_live'):
+                raise ValueError('Checagem operacional não aceita replay')
+            if args['action']=='OPEN' and (state['portfolio'].get('positions') or state.get('execution_check')):
+                raise ValueError('Checagem exige carteira sem posição/checagem aberta')
+            if args['action']=='CLOSE' and (state.get('execution_check') or {}).get('check_id')!=args['check_id']:
+                raise ValueError('check_id não corresponde à checagem aberta')
         paper_data = self._collect_paper_data(args) if name == 'paper_tick' else None
+        if name=='execution_check':
+            if args['action']=='OPEN':
+                paper_data=self._collect_paper_data({})
+                if paper_data.get('snapshot') is None:
+                    provider=self._provider or CoinbaseMarket()
+                    paper_data['snapshot']=collect(self.cfg.mint,market=lambda:provider.market(
+                        self.cfg.mint,candles=paper_data['candles'],timeframe_seconds=self.cfg.timeframe_seconds))
+            else:
+                provider=self._provider or CoinbaseMarket()
+                candles=[Candle(**row) for row in state['history']]
+                paper_data={'snapshot':collect(self.cfg.mint,market=lambda:provider.market(
+                    self.cfg.mint,candles=candles,timeframe_seconds=self.cfg.timeframe_seconds))}
         if name in {'prepare_decision','submit_decision'} and state.get('input_mode')=='paper_live':
             # Reasoning runs in the caller's session. Refresh execution observations
             # outside the write transaction; bind the submission again inside it.
@@ -435,8 +532,14 @@ class Service:
                 raise ValueError('Feed obrigatório')
             provider=self._provider or CoinbaseMarket()
             candles=[Candle(**row) for row in state['history']]
-            paper_data={'snapshot':collect(self.cfg.mint,market=lambda:provider.market(
-                self.cfg.mint,candles=candles,timeframe_seconds=self.cfg.timeframe_seconds))}
+            saved=state.get('snapshot') or {}
+            now=int(time.time())
+            reuse=(name=='prepare_decision' and saved.get('source')=='coinbase_advanced_sol_spot'
+                   and saved.get('product_id')=='SOL-USDC' and -5<=now-saved.get('timestamp',0)<=15
+                   and now<state['last_timestamp']+2*self.cfg.timeframe_seconds)
+            paper_data={'snapshot':Snapshot(**saved)} if reuse else {'snapshot':collect(
+                self.cfg.mint,market=lambda:provider.market(self.cfg.mint,candles=candles,
+                                                          timeframe_seconds=self.cfg.timeframe_seconds))}
         check_deadline()
         with self.store.transaction() as db:
             check_deadline()
@@ -463,14 +566,24 @@ class Service:
         if int(time.time()) - (candles[-1].timestamp+step) > step:
             raise DataError('Feed Coinbase atrasado; ciclo bloqueado')
         snap = None
-        if state['last_timestamp'] is not None and candles[-1].timestamp > state['last_timestamp']:
+        if state['last_timestamp'] is not None and (candles[-1].timestamp > state['last_timestamp'] or state['portfolio'].get('positions')):
             # Coinbase book timestamp must remain the original observation time.
             snap = collect(self.cfg.mint,market=lambda:provider.market(
                 self.cfg.mint,candles=candles,timeframe_seconds=step))
+        if snap is not None and int(time.time())//step*step>candles[-1].timestamp+step:
+            candles=provider.candles(self.cfg.mint,count=120,aggregate=step)
+            if snap.timestamp<candles[-1].timestamp+step:
+                snap=collect(self.cfg.mint,market=lambda:provider.market(
+                    self.cfg.mint,candles=candles,timeframe_seconds=step))
+        if int(time.time())-(candles[-1].timestamp+step)>step:
+            raise DataError('Candles expiraram durante coleta; ciclo bloqueado')
+        if snap is not None:self._require_fresh_mark(snap)
         return dict(candles=candles,snapshot=snap)
     def _command(self,db,name,args,paper_data=None):
         state = self._load(db)
         book = Portfolio.restore(state['portfolio'])
+        if name=='execution_check':
+            return self._execution_check(db,state,book,args,paper_data)
         if name in {'paper_tick','ingest'}:
             mode = 'paper_live' if name == 'paper_tick' else 'replay'
             if state.get('input_mode') not in (None,mode):
@@ -506,7 +619,20 @@ class Service:
             if bar is None:
                 newest = candles[-1].timestamp
                 if newest <= state['last_timestamp']:
-                    return dict(result='waiting_for_closed_bar',last_bar=state['last_timestamp'])
+                    mark=paper_data.get('snapshot')
+                    events=[]
+                    if mark is not None and book.positions:
+                        self._require_fresh_mark(mark)
+                        broker=PaperBroker(book,self.cfg)
+                        events=broker.on_mark(mark.price,mark.timestamp,self.cfg.mint)
+                        update_breakers(book,self.cfg,mark.price,mark.timestamp)
+                        if book.halted:events.extend(broker.flatten(mark.price,mark.timestamp,'circuit_breaker'))
+                        state.update(portfolio=book.serialize(),snapshot=asdict(mark),last_price=mark.price)
+                        self._remember(state,events)
+                        self.store.save(db,state)
+                        self.store.event(db,mark.timestamp,'intrabar_mark',dict(events=events,source=mark.source))
+                    return dict(result='waiting_for_closed_bar',last_bar=state['last_timestamp'],events=events)
+
             if candles[-1].timestamp != next_ts:
                 recovery_events = []
                 if book.positions or state['pending']:
@@ -532,6 +658,9 @@ class Service:
                 state['history'] = [asdict(b) for b in history]
                 state['last_timestamp'] = history[-1].timestamp
                 state['last_price'] = history[-1].close
+                if paper_data.get('snapshot') is not None:
+                    state['snapshot']=asdict(paper_data['snapshot'])
+                    state['last_price']=paper_data['snapshot'].price
                 state['last_digest'] = hashlib.sha256(canonical(state['history']).encode()).hexdigest()
                 state['bars_processed'] = max(state['bars_processed'],self.cfg.warmup_bars)
                 self.store.save(db,state)

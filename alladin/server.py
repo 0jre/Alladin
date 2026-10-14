@@ -28,6 +28,7 @@ CONTRACT = {
     'commands':{
         'paper_tick':{'args':[],'result':'read-only Coinbase SOL-USDC market data only -> forward-only warmup or spot paper cycle; never signs or sends'},
         'ingest':{'args':['candle','snapshot'],'result':'closed bar -> agents -> risk -> pending paper action'},
+        'execution_check':{'args':['action','check_id','purpose=execution_validation','proposal (OPEN only)'],'result':'explicit controlled paper OPEN/CLOSE; risk required; excluded from autonomous strategy statistics'},
         'prepare_decision':{'args':[],'result':'frozen evidence, schemas and role prompts for external session agents; no inference'},
         'submit_decision':{'args':['task_id','evidence_sha256','reports','decision','session_id'],'result':'validate externally produced reports and plan; risk recheck; paper only'},
         'analyze':{'args':[],'result':'analysis of stored data; does not schedule a trade'},

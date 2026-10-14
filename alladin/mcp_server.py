@@ -33,6 +33,7 @@ def tools():
         _tool('alladin_contract', 'Contrato de comandos do Alladin.', {}),
         _tool('paper_tick', 'Coleta candles, livro e trades públicos da Coinbase do produto SOL-USDC; aquece com OHLCV real e processa no máximo uma barra paper spot. Não acessa carteira nem envia transação.', {}),
         _tool('ingest', 'Barra fechada e snapshot. O conselho decide; a entrada paper sai na barra seguinte.', {'candle': {'type': 'object'}, 'snapshot': {'type': 'object'}}, ('candle', 'snapshot')),
+        _tool('execution_check', 'Checagem controlada explícita: abre/fecha apenas paper com cotação Coinbase e risco normal. Não mede estratégia autônoma.', {'action':{'type':'string','enum':['OPEN','CLOSE']},'check_id':{'type':'string'},'purpose':{'type':'string','enum':['execution_validation']},'proposal':{'type':'object'}}, ('action','check_id','purpose')),
         _tool('prepare_decision', 'Prepara evidências e prompts para os agentes da sessão. Não faz inferência.', {}),
         _tool('submit_decision', 'Valida pareceres externos e plano; execução somente paper.', {k:{'type':'object' if k in {'reports','decision'} else 'string'} for k in ['task_id','evidence_sha256','reports','decision','session_id']}, ('task_id','evidence_sha256','reports','decision','session_id')),
         _tool('analyze', 'Analisa o que está gravado. Não agenda operação.', optional),

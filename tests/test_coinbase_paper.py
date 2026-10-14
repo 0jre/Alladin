@@ -141,7 +141,7 @@ class LivePaperTests(unittest.TestCase):
             def market(self,*args,**kwargs):return market
         with patch('alladin.engine.CoinbaseMarket',FakeCoinbase), \
              patch('alladin.engine.time.time',return_value=now-600) as clock, \
-             patch('alladin.engine.collect'):
+             patch('alladin.engine.collect',return_value=Snapshot(now,price=bars[-1].close,source='coinbase_advanced_sol_spot',product_id='SOL-USDC',liquidity_usd=1e7,volume_24h_usd=5e7)):
             warmed=svc.command('paper_tick',{},'warm-gap')
             self.assertEqual(warmed['result'],'warmed_up')
             clock.return_value=now

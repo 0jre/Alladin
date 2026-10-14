@@ -114,6 +114,8 @@ class Council:
             audit['candidate_economics']=evidence['candidate_economics']
             held=any(pos.mint==s.mint and pos.market=='spot' for pos in book.positions)
             admissible=[row for row in evidence['candidate_economics'] if row['approval']['approved']]
+            if not held and not ideas:
+                return abstain('Sem sinal quantitativo; permanecer em caixa','signal_abstention')
             if not held and not admissible:
                 audit['profile_feasibility']=profile_feasibility(cfg)
                 return abstain('Nenhum candidato aprovado por risco e custos','economic_abstention')

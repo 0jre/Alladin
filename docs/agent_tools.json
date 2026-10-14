@@ -44,7 +44,8 @@
             "watch",
             "unwatch",
             "prepare_decision",
-            "submit_decision"
+            "submit_decision",
+            "execution_check"
           ]
         },
         "args": {
