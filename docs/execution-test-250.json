@@ -1,0 +1,147 @@
+{
+  "started_at_utc": "2026-10-14T00:30:14.765285+00:00",
+  "completed_at_utc": "2026-10-14T00:33:00.869199+00:00",
+  "test_type": "controlled execution test with live market data",
+  "strategy_performance_test": false,
+  "autonomous_signals": false,
+  "initial_usdc": 250,
+  "timeframe_seconds": 60,
+  "source": "Coinbase Advanced Trade SOL-USDC and read-only Solana mainnet RPC",
+  "production_code_base": "957a12bd2f2744869c8a06cf51d51c90a78d308d",
+  "risk_policy_overridden": false,
+  "fee_bps": 10,
+  "slippage_bps": 5,
+  "fixed_cost_usdc_per_operation": 0.02,
+  "events": [
+    {
+      "cost": 0.06630434782608696,
+      "event": "OPEN",
+      "market": "spot",
+      "position_id": "6a563d9cf5be044a",
+      "price": 107.525,
+      "qty": 0.2870919806314002,
+      "side": 1
+    },
+    {
+      "closed_at": 1791937980,
+      "cost": 0.06629573506666801,
+      "entry": 107.525,
+      "event": "CLOSE",
+      "funding_paid": 0.0,
+      "market": "spot",
+      "mint": "So11111111111111111111111111111111111111112",
+      "net_pnl": -0.1383419225053859,
+      "opened_at": 1791937901,
+      "position_id": "6a563d9cf5be044a",
+      "price": 107.505,
+      "qty": 0.2870919806314002,
+      "reason": "agent_exit",
+      "side": 1,
+      "strategy": "controlled_roundtrip"
+    }
+  ],
+  "final_status": {
+    "chain": "solana",
+    "venue": "coinbase_advanced",
+    "execution": "paper",
+    "asset": "So11111111111111111111111111111111111111112/USDC",
+    "agent_mode": "controlled_execution_test",
+    "bars_processed": 82,
+    "last_timestamp": 1791937860,
+    "equity_usdc": 249.8616580774946,
+    "cash_usdc": 249.8616580774946,
+    "gross_usdc": 0,
+    "net_usdc": 0,
+    "positions": [],
+    "halted": false,
+    "halt_reason": "",
+    "pending": null,
+    "pending_book": {},
+    "closed_trades": 1,
+    "costs_usdc": 0.132600082892755,
+    "last_decision": {
+      "approval": {
+        "approved": true,
+        "estimated_stop_loss_usdc": 0.0,
+        "leverage": 1.0,
+        "notional": 0.0,
+        "reasons": [
+          "non_entry"
+        ]
+      },
+      "council": {
+        "market_data": "live Coinbase plus Solana read-only RPC",
+        "mode": "controlled_execution_test",
+        "test_only": true,
+        "timing": "controlled test sequence"
+      },
+      "diagnostics": {
+        "atr_fraction": 0.0007042534249305821,
+        "candidate_count": 0,
+        "ready": true,
+        "regime": "trend",
+        "rsi": 74.32432432432539,
+        "snapshot_age_seconds": 0
+      },
+      "market_data": {
+        "bar_timestamp": 1791937860,
+        "fill_model": "coinbase_midpoint_plus_configured_costs",
+        "observed_at": 1791937980,
+        "source": "coinbase_advanced_sol_spot"
+      },
+      "mint": "So11111111111111111111111111111111111111112",
+      "proposal": {
+        "action": "CLOSE",
+        "confidence": 0.8,
+        "horizon_bars": 24,
+        "market": "spot",
+        "mint": "So11111111111111111111111111111111111111112",
+        "stop_fraction": 0.02,
+        "strategy": "controlled_roundtrip",
+        "take_fraction": 0.06,
+        "thesis": "Teste funcional controlado: comprar e fechar no próximo candle, com preço atual e risco preservado"
+      },
+      "timestamp": 1791937980
+    },
+    "series": {},
+    "llm_calls_process": 0,
+    "llm_calls_persisted": 0,
+    "universe": {
+      "So11111111111111111111111111111111111111112": "negotiable"
+    },
+    "blocked_mints": []
+  },
+  "audit": {
+    "valid": true,
+    "count": 3,
+    "head": "128546a272044f0e4d1260e65503d4c85a7595c4d0b83d327c7bd2b9516b0387"
+  },
+  "processed_cycles": 2,
+  "errors": [],
+  "summary": {
+    "chain": "solana",
+    "execution": "paper",
+    "agent_mode": "controlled_execution_test",
+    "source": "coinbase_advanced_sol_spot",
+    "initial_usdc": 250,
+    "final_usdc": 249.8616580774946,
+    "return_pct": -0.05533676900215667,
+    "max_drawdown_pct": 0.05533676900215667,
+    "closed_trades": 1,
+    "win_fraction": 0.0,
+    "profit_factor": 0.0,
+    "mean_trade_net_pnl": -0.1383419225053859,
+    "costs_usdc": 0.132600082892755,
+    "bar_return_mean": -0.0001441133707308917,
+    "bar_return_std": 0.0001441133707308917,
+    "halted": false,
+    "halt_reason": "",
+    "llm_calls_process": 0,
+    "warnings": [
+      "Teste funcional com sinais controlados e dados atuais da Coinbase; não mede desempenho de uma estratégia autônoma.",
+      "Custos e fills são simulados; não são execução em DEX ou ordens reais."
+    ]
+  },
+  "market_data_is_synthetic": false,
+  "signals_are_controlled": true
+}
