@@ -55,8 +55,11 @@ class DiagnosticsTests(unittest.TestCase):
             self.assertEqual(service.status(),before)
             self.assertEqual(service.store.verify_audit()['count'],0)
 
-    def test_default_balance_profile_incompatibility_is_reported_not_bypassed(self):
+    def test_old_balance_profile_conflict_is_reported_and_revised_profile_fits(self):
         cfg=Config.load(Path(__file__).resolve().parents[1]/'config.json')
+        from dataclasses import replace
+        self.assertTrue(profile_feasibility(cfg)['baseline_can_fit'])
+        cfg=replace(cfg,min_reward_risk=1.8)
         result=profile_feasibility(cfg)
         self.assertFalse(result['baseline_can_fit'])
         self.assertLess(result['strategies']['trend_following']['best_net_reward_risk'],cfg.min_reward_risk)

@@ -11,5 +11,8 @@
   "max_net_fraction": 1.0,
   "max_daily_loss": 0.02,
   "max_drawdown": 0.06,
-  "allowed_markets": ["spot"]
+  "allowed_markets": [
+    "spot"
+  ],
+  "min_reward_risk": 1.5
 }

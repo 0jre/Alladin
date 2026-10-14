@@ -171,4 +171,6 @@ def profile_feasibility(cfg):
         loss_budget_usdc=loss_budget,max_stop_fraction=max_stop,roundtrip_cost_fraction=costs,
         required_net_reward_risk=cfg.min_reward_risk,strategies=rows,
         assumptions='Initially flat account, initial cash, unchanged modeled costs and current strategy targets. Necessary condition only; live risk still applies.',
-        resolution='Review strategy evidence and economic policy explicitly; do not inflate targets, reduce costs or widen loss limits to force a fill.')
+        resolution=('Baseline plans can fit in principle; each proposal still requires fresh evidence and full risk approval.'
+                    if any(row['can_fit'] for row in rows.values()) else
+                    'Review strategy evidence and economic policy explicitly; do not inflate targets, reduce costs or widen loss limits to force a fill.'))

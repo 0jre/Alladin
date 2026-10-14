@@ -15,6 +15,10 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit, urlencode
 
+HTTP_TOTAL_SECONDS=20
+COLLECTION_TOTAL_SECONDS=45
+
+
 class DataError(RuntimeError):
     def __init__(self, message, retry_after=None,code=None,stage=None,source=None):
         super().__init__(message)

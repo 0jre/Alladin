@@ -92,7 +92,7 @@ Após `warmed_up`, já é permitido chamar `prepare_decision`: o comando coleta 
 primeiro snapshot verificado antes de verificar a disponibilidade do contexto.
 `waiting_for_closed_bar` também não impede essa preparação. Uma preparação sem
 candidato viável retorna `abstained`, conserva o snapshot coletado e registra o
-motivo. Comandos de coleta compartilham um prazo total de 15 segundos; consumidores
+motivo. Comandos de coleta compartilham um prazo total de 45 segundos; consumidores
 podem repetir falhas transitórias com a mesma chave, sem usar dados fabricados.
 
 A partir de `external-session-v2`, os pareceres são `market`, `quality`, `flow` e `challenger`. O papel `onchain` não é aceito. Use nova preparação para tarefas do protocolo anterior; saldos e histórico não são zerados. A única fonte de dados é a Coinbase; não existe RPC ou verificação blockchain.

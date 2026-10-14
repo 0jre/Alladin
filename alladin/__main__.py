@@ -13,7 +13,7 @@ from .research import write_demo,jsonl_feed,export
 from .server import build_server,CONTRACT
 from .mcp_server import serve as serve_mcp
 from .client import BackendClient
-from .transport import DataError
+from .transport import DataError,COLLECTION_TOTAL_SECONDS
 from .validation import validate
 
 def _interrupt(signum,frame):
@@ -39,6 +39,7 @@ def main():
     sub.add_parser('status'); sub.add_parser('contract')
     sub.add_parser('performance')
     sub.add_parser('doctor')
+    policy=sub.add_parser('revise-policy');policy.add_argument('--from-config',required=True)
     exp = sub.add_parser('export'); exp.add_argument('--output',default='results')
     sub.add_parser('halt')
     val=sub.add_parser('validate'); val.add_argument('--feed',required=True); val.add_argument('--output',default='results/validation');val.add_argument('--folds',type=int,default=3)
@@ -69,6 +70,9 @@ def main():
                 print(json.dumps(result,indent=2,ensure_ascii=False,allow_nan=False))
                 return 0
             service = Service(cfg,args.db,args.agents)
+            if args.command=='revise-policy':
+                print(json.dumps(service.revise_policy(Config.load(args.from_config)),indent=2),flush=True)
+                return 0
             if args.command == 'demo-live':
                 from .demo import run_demo
                 result=run_demo(service,args.seconds,args.poll_seconds,args.output,
@@ -122,7 +126,7 @@ def main():
                         runner.stop_event.set()
                     server.server_close()
                     if thread and thread.ident is not None:
-                        thread.join(timeout=30)
+                        thread.join(timeout=COLLECTION_TOTAL_SECONDS+5)
                     signal.signal(signal.SIGTERM,previous)
                 return 1 if worker_failed.is_set() else 0
             if args.command == 'status':

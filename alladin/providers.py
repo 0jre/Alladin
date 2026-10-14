@@ -7,7 +7,7 @@ import time
 from urllib.parse import quote, urlencode
 
 from .models import Candle, Snapshot, SOL, pubkey, utc_timestamp
-from .transport import HTTP, DataError
+from .transport import HTTP, DataError,HTTP_TOTAL_SECONDS
 
 
 class CoinbaseMarket:
@@ -18,7 +18,7 @@ class CoinbaseMarket:
                      3600: "ONE_HOUR"}
 
     def __init__(self, http=None, product_id=None):
-        self.http = http or HTTP(timeout=8, retries=2)
+        self.http = http or HTTP(timeout=HTTP_TOTAL_SECONDS, retries=2)
         self.product_id = product_id or "SOL-USDC"
         self._volume_cache = None
         self._candles_cache = None

@@ -128,7 +128,7 @@ este serviço em um host persistente.
 ## Prazos de coleta e demonstração
 
 Cada comando `paper_tick`, `prepare_decision` e `submit_decision` compartilha um
-prazo monotônico de 15 segundos entre todas as chamadas HTTP, retries e espera
+prazo monotônico de 45 segundos entre todas as chamadas HTTP, retries e espera
 por capacidade. Cada requisição também tem seu prazo total, além do timeout do
 socket. DNS ou leitura lenta não mantêm a chamada do backend bloqueada além do
 orçamento: a resposta tardia é descartada e nunca aplica uma operação na carteira.
@@ -168,7 +168,7 @@ O diagnóstico é somente leitura, retorna código de saída 0 quando suas condi
 necessárias passam e 2 quando há bloqueio. Também está em `GET /v1/diagnostics`
 (autenticado) e MCP `alladin_diagnostics`. Não grava feed, modifica saldo ou opera.
 `checks` verifica somente a Coinbase; `sources_ready` não implica sinal
-nem aprovação de risco. Cada grupo tem até 15 segundos, até 15 no diagnóstico todo.
+nem aprovação de risco. Cada grupo tem até 45 segundos, até 45 no diagnóstico todo.
 
 Falhas expõem somente `code`, `stage` e `source` conhecidos. `proxy_tunnel`
 identifica falha na conexão CONNECT ao proxy, antes do TLS e da resposta da API.
@@ -182,12 +182,11 @@ acesso HTTPS a api.coinbase.com. Remover RPC não libera automaticamente esse
 acesso no proxy. Não contornar regras de rede nem fabricar snapshots.
 
 `profile_feasibility` verifica uma condição necessária dos planos padrão em uma
-conta inicialmente sem posições. O perfil de saldo integral atual tem custos de
-ida e volta, risco de 2% e retorno/risco líquido mínimo de 1,8. Com os alvos padrão
-de 2,0–2,2 vezes o stop, esses requisitos não cabem juntos. O diagnóstico mostra o
-stop máximo e o melhor retorno/risco possível nesse cenário. Não aumenta stops,
-não reduz custos nem infla alvos para produzir uma entrada. O perfil e os limites
-permanecem intactos; a política/estratégia precisa de revisão explícita e evidência.
+conta inicialmente sem posições. O perfil demo atual mantém saldo integral, custos,
+risco de 2% por operação/diário e drawdown de 6%, com retorno/risco líquido mínimo de
+1,5. O mínimo anterior de 1,8 era incompatível com esses planos e custos. A revisão
+reduz o retorno exigido; não altera o stop, os alvos, as taxas ou o orçamento de perda.
+Isso torna alguns planos possíveis, sem garantir sinal, aprovação ou lucro.
 
 O cliente HTTP público retorna agora o resultado do comando já desembrulhado,
 como MCP e Service.command; a resposta HTTP bruta continua `{ "result": ... }`.
@@ -195,3 +194,26 @@ A integração controlada testa dados brutos de fonte → indicadores → contex
 submissão externa → risco → OPEN/CLOSE → saldo/auditoria em HTTP e MCP. Essas
 fixtures são sintéticas, usam perfil de pesquisa próprio e não validam desempenho
 nem operações com mercado atual no perfil integral do usuário.
+
+## Revisão explícita do critério de retorno
+
+O perfil em config.json declara `min_reward_risk=1.5`. O default da classe Config
+continua 1,8 para interpretar corretamente arquivos e fingerprints antigos.
+A política não é migrada implicitamente ao iniciar uma sessão.
+
+```bash
+python -m alladin --config config-novo.json --db data/sessao.sqlite revise-policy --from-config config-anterior.json
+```
+
+Essa operação administrativa permite exclusivamente mudar `min_reward_risk`.
+Exige a configuração anterior exata, sessão existente e mesmo modo; não cria uma
+carteira nem altera limites de perda. Saldo, posições, custos, PnL, pico, perda
+consumida no dia, cooldown e histórico são preservados. Cancela planos/tarefas
+pendentes para exigir nova avaliação e registra hashes da carteira e das políticas
+na cadeia de auditoria. Repetição da mesma revisão é idempotente. Não está exposta
+como ferramenta de agentes HTTP/MCP nem aceita mudanças de risco/execução/ativos.
+
+O transporte Coinbase tem orçamento de 20 segundos por requisição e 45 para a
+coleta completa. O livro continua sendo obtido por último: aumentar a espera de
+rede não aumenta a idade permitida da cotação, que permanece no máximo 30 segundos.
+Uma janela demo de 60 segundos limita também cada comando ao tempo restante.

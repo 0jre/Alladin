@@ -11,22 +11,57 @@ from .broker import PaperBroker
 from .storage import Store, canonical
 from .universe import seed_primary, classify_snapshot
 from .providers import CoinbaseMarket, collect
-from .transport import DataError,deadline,check_deadline
+from .transport import DataError,deadline,check_deadline,COLLECTION_TOTAL_SECONDS
 from .evaluation import assess_trades
 from .external import context_hash
 import uuid
+
+def config_fingerprint(cfg):
+    payload=asdict(cfg)
+    if cfg.sizing_mode=='risk_budget':
+        payload.pop('sizing_mode')
+    return hashlib.sha256(canonical(payload).encode()).hexdigest()
+
 
 class Service:
     """One persistent state machine, serialized by SQLite write transactions."""
     def __init__(self,cfg,db_path,agent_mode='external',council=None):
         self.cfg,self.store = cfg,Store(db_path)
         self.council = council or Council(agent_mode)
-        config_payload = asdict(cfg)
-        if cfg.sizing_mode == 'risk_budget':
-            config_payload.pop('sizing_mode')  # retain fingerprints of existing risk-budget sessions
-        self.fingerprint = hashlib.sha256(canonical(config_payload).encode()).hexdigest()
+        self.fingerprint=config_fingerprint(cfg)
         self.command_lock = threading.RLock()
         self._provider = None
+    def revise_policy(self,previous_cfg):
+        """Explicit, atomic revision of the return criterion; never reset risk history."""
+        before,after=asdict(previous_cfg),asdict(self.cfg)
+        changes={key:{'before':before[key],'after':after[key]} for key in before if before[key]!=after[key]}
+        if set(changes)!={'min_reward_risk'}:
+            raise ValueError('Revisão permite somente min_reward_risk; demais limites devem ser preservados')
+        old_hash=config_fingerprint(previous_cfg)
+        with self.store.transaction() as db:
+            state=self.store.load(db)
+            if state is None or state.get('agent_mode')!=self.council.mode:
+                raise ValueError('Sessão existente compatível obrigatória; revisão não cria carteira')
+            if state.get('config_hash')==self.fingerprint:
+                row=db.execute("SELECT payload FROM events WHERE kind='policy_revision' ORDER BY seq DESC LIMIT 1").fetchone()
+                previous=json.loads(row[0]) if row else {}
+                if previous.get('previous_config_sha256')!=old_hash or previous.get('config_sha256')!=self.fingerprint:
+                    raise ValueError('Revisão já existente tem outra origem; configuração anterior incorreta')
+                return dict(result='already_revised',changes=changes)
+            if state.get('config_hash')!=old_hash:
+                raise ValueError('Configuração anterior não corresponde à sessão; revisão recusada')
+            portfolio_digest=hashlib.sha256(canonical(state['portfolio']).encode()).hexdigest()
+            state['config_hash']=self.fingerprint
+            state['pending']=None
+            state['pending_book']={}
+            state['external_task']=None
+            result=dict(result='policy_revised',changes=changes,previous_config_sha256=old_hash,
+                        config_sha256=self.fingerprint,portfolio_sha256=portfolio_digest,
+                        cancelled_pending_decisions=True)
+            self.store.save(db,state)
+            self.store.event(db,int(time.time()),'policy_revision',result)
+            return result
+
     def _ensure(self,state):
         for key,default in [('series',{}),('pending_book',{}),('blocked_mints',{}),
                             ('universe',{}),('memory',[]),
@@ -362,7 +397,7 @@ class Service:
         return result
     def command(self,name,args,key):
         if name in {'paper_tick','prepare_decision','submit_decision'}:
-            with deadline(15):
+            with deadline(COLLECTION_TOTAL_SECONDS):
                 return self._bounded_command(name,args,key)
         return self._bounded_command(name,args,key)
 

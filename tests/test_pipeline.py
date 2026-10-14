@@ -20,7 +20,7 @@ from alladin.transport import DataError
 class PipelineTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
-        self.cfg=Config(initial_usdc=250,timeframe_seconds=60)
+        self.cfg=replace(Config.load(Path(__file__).resolve().parents[1]/'config.json'),timeframe_seconds=60)
         self.service=Service(self.cfg,Path(self.tmp.name)/'paper.sqlite')
         self.now=1800000065
         self.price=100+.05*79+.12*math.sin(79)
@@ -35,8 +35,8 @@ class PipelineTests(unittest.TestCase):
         if parsed.path.endswith('/candles'):
             hour=query['granularity'][0]=='ONE_HOUR';step=3600 if hour else 60;count=26 if hour else 80
             end=self.now//step*step
-            return {'candles':[dict(start=str(end-(count-i)*step),open=str(p),high=str(p+1.2),
-                low=str(p-1.2),close=str(p),volume='100000') for i in range(count)
+            return {'candles':[dict(start=str(end-(count-i)*step),open=str(p),high=str(p+.36),
+                low=str(p-.36),close=str(p),volume='100000') for i in range(count)
                 for p in [100+.05*i+.12*math.sin(i)]]}
         if parsed.path.endswith('/ticker'):
             return {'trades':[{'price':str(self.price),'size':'100','side':side} for side in ('BUY','SELL')]}
@@ -67,6 +67,8 @@ class PipelineTests(unittest.TestCase):
         args=self.submission(first,'LONG')
         opened=call('submit_decision',args,'open')
         self.assertEqual(opened['events'][0]['event'],'OPEN',opened)
+        self.assertAlmostEqual(self.service.status()['cash_usdc'],0,places=7)
+        self.assertLessEqual(opened['decision']['approval']['estimated_stop_loss_usdc'],5)
         self.assertEqual(call('submit_decision',args,'open'),opened)
         second=call('prepare_decision',{},'second')['task']
         args=self.submission(second,'CLOSE');closed=call('submit_decision',args,'close')

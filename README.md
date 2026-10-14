@@ -104,7 +104,7 @@ O servidor usa SQLite WAL e uma cadeia de hash para auditoria. O HTTP da bibliot
 
 Para observar uma janela limitada, use `demo-live --seconds 60 --output results/demo`.
 O orçamento de coleta cobre DNS, leitura e retries; os comandos de mercado têm
-limite total de 15 segundos e a demonstração também respeita o tempo restante da
+limite total de 45 segundos e a demonstração também respeita o tempo restante da
 janela. A sessão externa continua responsável por analisar e submeter decisões.
 
 Antes de repetir uma sessão bloqueada, rode `python -m alladin doctor` ou chame
@@ -114,3 +114,9 @@ indica falha anterior à resposta da API, que exige verificar o acesso do ambien
 aos hosts públicos. Limites de risco não são relaxados para produzir negociações.
 
 O runtime não contém cliente RPC nem configuração `SOLANA_RPC_URL`. A fonte externa única é a Coinbase. O protocolo `external-session-v2` usa o papel `quality` no lugar de `onchain`; o bundle ativo é 2.0.0. Campos on-chain de snapshots antigos são compatibilidade de histórico e não aparecem no envelope de evidências.
+
+O perfil demo agora declara retorno/risco líquido mínimo de **1,5**, mantendo
+**2%** de perda estimada por operação e por dia e **6%** de drawdown. Os custos e
+alvos não foram alterados. Essa política precisa de avaliação fora da amostra;
+não demonstra rentabilidade. Carteiras existentes usam revisão explícita auditada
+com `revise-policy --from-config`, preservando saldo e perdas já consumidas.
