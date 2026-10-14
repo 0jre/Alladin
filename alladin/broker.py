@@ -21,7 +21,7 @@ class PaperBroker:
         margin = a.notional if p.market == 'spot' else a.notional/a.leverage
         if margin+cost > self.book.cash+1e-8:
             raise ValueError('Saldo fictício insuficiente')
-        self.book.cash -= margin+cost
+        self.book.cash = max(0,self.book.cash-margin-cost)  # normalize sub-cent floating-point residue
         self.book.fees_paid += cost
         pid = hashlib.sha256(f'{ts}:{mint}:{p.market}:{side}'.encode()).hexdigest()[:16]
         pos = Position(pid,p.market,side,qty,price,price*(1-side*p.stop_fraction),

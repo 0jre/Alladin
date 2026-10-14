@@ -24,3 +24,5 @@ prova de rentabilidade ou sessão de negociação.
 - Idempotência é consultada antes da coleta. Worker único por banco, polling contado após conclusão, saúde de processo distinta da prontidão do feed.
 - Mints não-âncora entram pelo funil `admit` → `watch`; replay/validate fazem isso automaticamente no primeiro snapshot de cada mint.
 - `status()` precifica cada posição pelo mark do próprio mint (`state['series'][mint]['last_price']`).
+
+- `available_balance` usa todo o caixa após reservar custos: aprovar integralmente ou recusar. Não reduzir silenciosamente. Respeitar risco por entrada, perda diária restante, drawdown, exposição e liquidez.

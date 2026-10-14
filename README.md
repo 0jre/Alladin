@@ -22,6 +22,10 @@ python3 -m alladin --config config.json --db data/paper-250.sqlite serve --paper
 
 O padrão agora é 250 USDC. O primeiro `paper-tick` tende a retornar `warmed_up`. `serve --paper-worker` mantém a API e a coleta no mesmo processo; `paper-live` inicia só o worker. Para uma conta paper nova, use outro arquivo SQLite. O comando `generate-demo` e `replay` usam dados sintéticos e servem somente para testar o motor, nunca como replay de mercado real.
 
+O perfil padrão `sizing_mode=available_balance` usa todo o saldo disponível, descontando o custo da entrada. A perda estimada até o stop, incluindo custos de ida e volta, precisa caber em 2% por operação, no orçamento diário restante de 2% e no drawdown de 6%. Uma entrada que não cabe nesses limites é recusada integralmente. Após a venda, o próximo tamanho usa o saldo atualizado. O perfil anterior continua disponível com `sizing_mode=risk_budget`.
+
+Esta mudança de perfil exige um banco novo; não reconfigure silenciosamente uma sessão existente. Para continuar uma carteira anterior, transfira o saldo e os limites diários já consumidos com um evento de auditoria que referencie a sessão de origem.
+
 Leia o [guia de operação](docs/operations.md) para persistência, readiness, supervisão Linux, container, gaps e retomada. `GET /health` confirma processo ativo; `GET /ready` verifica prontidão de coleta e worker. O template systemd está em `deploy/alladin.service`.
 
 ## Escolher o motor de decisão

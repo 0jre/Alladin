@@ -1,0 +1,157 @@
+{
+  "started_at_utc": "2026-10-14T01:32:14.086367+00:00",
+  "completed_at_utc": "2026-10-14T01:34:34.483532+00:00",
+  "test_type": "controlled paper execution using full available balance and live market data",
+  "autonomous_signals": false,
+  "market_data_is_synthetic": false,
+  "sizing_mode": "available_balance",
+  "config": {
+    "chain": "solana",
+    "execution": "paper",
+    "mint": "So11111111111111111111111111111111111111112",
+    "timeframe_seconds": 60,
+    "initial_usdc": 250,
+    "warmup_bars": 80,
+    "risk_per_trade": 0.02,
+    "sizing_mode": "available_balance",
+    "max_position_fraction": 1.0,
+    "max_gross_fraction": 1.0,
+    "max_net_fraction": 1.0,
+    "max_open_risk": 0.02,
+    "max_daily_loss": 0.02,
+    "max_drawdown": 0.06,
+    "min_liquidity_usd": 1000000,
+    "min_volume_24h_usd": 1000000,
+    "max_pool_participation": 0.0005,
+    "max_top10_account_share": 0.5,
+    "max_snapshot_age_seconds": 1800,
+    "max_oracle_age_seconds": 120,
+    "max_oracle_deviation": 0.01,
+    "min_confidence": 0.65,
+    "min_reward_risk": 1.8,
+    "fee_bps": 10,
+    "slippage_bps": 5,
+    "fixed_cost_usdc": 0.02,
+    "max_leverage": 2,
+    "maintenance_fraction": 0.05,
+    "max_entry_gap_fraction": 0.01,
+    "max_historical_cvar": 0.04,
+    "cooldown_bars": 4,
+    "trailing_atr_multiple": 2.5,
+    "allowed_markets": [
+      "spot"
+    ],
+    "max_watched": 32,
+    "allow_transfer_fee": false,
+    "authority_exceptions": []
+  },
+  "source_audit_head": "128546a272044f0e4d1260e65503d4c85a7595c4d0b83d327c7bd2b9516b0387",
+  "starting_cash_usdc": 249.8616580774946,
+  "events": [
+    {
+      "cost": 0.39420118533823456,
+      "event": "OPEN",
+      "market": "spot",
+      "position_id": "3fcca8ffe8dd50f7",
+      "price": 107.16499999999999,
+      "qty": 2.3278818354141406,
+      "side": 1
+    },
+    {
+      "closed_at": 1791941674,
+      "cost": 0.3944805311584843,
+      "entry": 107.16499999999999,
+      "event": "CLOSE",
+      "funding_paid": 0.0,
+      "market": "spot",
+      "mint": "So11111111111111111111111111111111111111112",
+      "net_pnl": -0.6024511696635585,
+      "opened_at": 1791941630,
+      "position_id": "3fcca8ffe8dd50f7",
+      "price": 107.245,
+      "qty": 2.3278818354141406,
+      "reason": "agent_exit",
+      "side": 1,
+      "strategy": "balance_roundtrip"
+    }
+  ],
+  "final_status": {
+    "chain": "solana",
+    "venue": "coinbase_advanced",
+    "execution": "paper",
+    "asset": "So11111111111111111111111111111111111111112/USDC",
+    "agent_mode": "controlled_balance_execution_test",
+    "sizing_mode": "available_balance",
+    "bars_processed": 82,
+    "last_timestamp": 1791941580,
+    "equity_usdc": 249.25920690783107,
+    "cash_usdc": 249.25920690783107,
+    "gross_usdc": 0,
+    "net_usdc": 0,
+    "positions": [],
+    "halted": false,
+    "halt_reason": "",
+    "pending": null,
+    "pending_book": {},
+    "closed_trades": 2,
+    "costs_usdc": 0.9212817993894737,
+    "last_decision": {
+      "approval": {
+        "approved": true,
+        "estimated_stop_loss_usdc": 0.0,
+        "leverage": 1.0,
+        "notional": 0.0,
+        "reasons": [
+          "non_entry"
+        ]
+      },
+      "council": {
+        "mode": "controlled_balance_execution_test",
+        "test_only": true
+      },
+      "diagnostics": {
+        "atr_fraction": 0.0010731616274729469,
+        "candidate_count": 0,
+        "ready": true,
+        "regime": "range",
+        "rsi": 51.19047619047597,
+        "snapshot_age_seconds": 0
+      },
+      "market_data": {
+        "bar_timestamp": 1791941580,
+        "fill_model": "coinbase_midpoint_plus_configured_costs",
+        "observed_at": 1791941674,
+        "source": "coinbase_advanced_sol_spot"
+      },
+      "mint": "So11111111111111111111111111111111111111112",
+      "proposal": {
+        "action": "CLOSE",
+        "confidence": 0.8,
+        "horizon_bars": 24,
+        "market": "spot",
+        "mint": "So11111111111111111111111111111111111111112",
+        "stop_fraction": 0.01,
+        "strategy": "balance_roundtrip",
+        "take_fraction": 0.04,
+        "thesis": "Teste controlado de dimensionamento pelo saldo"
+      },
+      "timestamp": 1791941674
+    },
+    "series": {},
+    "llm_calls_process": 0,
+    "llm_calls_persisted": 0,
+    "universe": {
+      "So11111111111111111111111111111111111111112": "negotiable"
+    },
+    "blocked_mints": []
+  },
+  "test_net_pnl_usdc": -0.6024511696635386,
+  "test_costs_usdc": 0.7886817164967188,
+  "closed_trades_in_test": 1,
+  "audit": {
+    "valid": true,
+    "count": 4,
+    "head": "5fe43dc18940886606b6ce7c181cb73203d2af3c6c1904c796de6b88c0141ca8"
+  },
+  "errors": []
+}

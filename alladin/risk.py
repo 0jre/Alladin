@@ -111,16 +111,31 @@ def approve(p,f,s,book,cfg,now,entry_price=None,instrument=None):
         return Approval(False,tuple(reasons))
     existing_risk = sum(x.qty*max(0,x.side*(price-x.stop)) for x in book.positions)
     budget = min(equity*cfg.risk_per_trade,max(0,equity*cfg.max_open_risk-existing_risk))
-    budget -= 2*cfg.fixed_cost_usdc
-    notional = max(0,budget)/(p.stop_fraction+cost_fraction)
     side = 1 if p.action == 'LONG' else -1
     # Combined exposure limit; no fake diversification across positions.
-    notional = min(notional,equity*cfg.max_position_fraction,
+    exposure_cap = min(equity*cfg.max_position_fraction,
                    max(0,equity*cfg.max_gross_fraction-book.gross(price)),
-                   max(0,equity*cfg.max_net_fraction-side*book.net(price)),
-                   s.liquidity_usd*cfg.max_pool_participation)
+                   max(0,equity*cfg.max_net_fraction-side*book.net(price)))
+    liquidity_cap = s.liquidity_usd*cfg.max_pool_participation
     available = max(0,book.cash-cfg.fixed_cost_usdc)
-    notional = min(notional,available/(1/leverage+(cfg.fee_bps+cfg.slippage_bps)/10000))
+    cash_cap = available/(1/leverage+(cfg.fee_bps+cfg.slippage_bps)/10000)
+    if cfg.sizing_mode == 'available_balance':
+        # Use the spendable balance, or reject the entire entry. Never silently
+        # shrink this profile back to a small risk-budget position.
+        notional = cash_cap
+        if notional > exposure_cap+1e-8:
+            return Approval(False,('balance_size_exceeds_exposure_limit',))
+        if notional > liquidity_cap+1e-8:
+            return Approval(False,('balance_size_exceeds_liquidity_limit',))
+        day_start = book.day_start_equity or equity
+        daily_remaining = max(0,day_start*cfg.max_daily_loss-max(0,day_start-equity))
+        drawdown_remaining = max(0,equity-book.peak*(1-cfg.max_drawdown))
+        budget = min(budget,daily_remaining,drawdown_remaining)
+        if notional*(p.stop_fraction+cost_fraction)+2*cfg.fixed_cost_usdc > budget+1e-8:
+            return Approval(False,('balance_size_exceeds_loss_budget',))
+    else:
+        budget -= 2*cfg.fixed_cost_usdc
+        notional = min(max(0,budget)/(p.stop_fraction+cost_fraction),exposure_cap,liquidity_cap,cash_cap)
     if notional < 10:
         return Approval(False,('insufficient_budget',))
     total_cost_fraction = cost_fraction+2*cfg.fixed_cost_usdc/notional

@@ -225,6 +225,7 @@ class Config:
     initial_usdc: float = 10000
     warmup_bars: int = 80
     risk_per_trade: float = .003
+    sizing_mode: str = 'risk_budget'
     max_position_fraction: float = .15
     max_gross_fraction: float = .30
     max_net_fraction: float = .20
@@ -256,6 +257,8 @@ class Config:
     def __post_init__(self):
         if self.chain != 'solana' or self.execution != 'paper':
             raise ValueError('Alladin aceita somente Solana em execução paper')
+        if not isinstance(self.sizing_mode,str) or self.sizing_mode not in {'risk_budget','available_balance'}:
+            raise ValueError('sizing_mode deve ser risk_budget ou available_balance')
         if set(self.allowed_markets) != {'spot'}:
             raise ValueError('Alladin aceita somente mercado spot')
         if type(self.allow_transfer_fee) is not bool:

@@ -4,6 +4,12 @@
 
 Backend Python 3.11+ e biblioteca padrão. O worker requer Linux/Unix (`fcntl`).
 Configuração padrão: Solana, SOL-USDC spot paper, 250 USDC, candles de 15 minutos.
+Dimensionamento padrão `available_balance`: usa o caixa disponível após reservar
+o custo da compra; não aplica o antigo teto de 15% por posição. O risco máximo
+estimado é 2% por entrada, limitado também pela perda diária restante de 2% e
+pelo drawdown máximo de 6%. Stops, liquidez ou exposição que não comportem o
+saldo inteiro bloqueiam a entrada; não há redução silenciosa para um lote menor.
+Limites de perda usam estimativas do modelo; um gap pode ultrapassar o stop.
 O motor `rules` usa estratégias quantitativas; `llm` exige configuração explícita.
 HOLD é uma decisão válida. O serviço não força entradas para produzir trades. O risco inclui custos variáveis e taxas fixas de ida e volta, relevantes numa conta pequena.
 
@@ -20,6 +26,9 @@ O servidor permanece em `127.0.0.1:8080`. Um único worker pode usar cada banco;
 a trava é liberada pelo sistema operacional quando o processo termina.
 Mantenha o mesmo SQLite, configuração e modo de agentes ao reiniciar. Alterar
 o saldo inicial de um banco existente é recusado; use outro arquivo para outra sessão.
+Trocar `risk_budget` por `available_balance` também exige outra sessão. Se houver
+continuidade de saldo, preserve custos, peak e orçamento diário consumido, e
+registre uma transferência referenciando o head da auditoria anterior.
 Não misture ingest/replay com paper-live na mesma sessão.
 
 Para rodar só o worker ou um teste limitado:

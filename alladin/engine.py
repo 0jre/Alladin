@@ -17,7 +17,10 @@ class Service:
     def __init__(self,cfg,db_path,agent_mode='rules',model=None,max_llm_calls=200,council=None):
         self.cfg,self.store = cfg,Store(db_path)
         self.council = council or Council(agent_mode,model,max_llm_calls)
-        self.fingerprint = hashlib.sha256(canonical(asdict(cfg)).encode()).hexdigest()
+        config_payload = asdict(cfg)
+        if cfg.sizing_mode == 'risk_budget':
+            config_payload.pop('sizing_mode')  # retain fingerprints of existing risk-budget sessions
+        self.fingerprint = hashlib.sha256(canonical(config_payload).encode()).hexdigest()
         self.command_lock = threading.RLock()
         self._provider = None
     def _ensure(self,state):
@@ -215,7 +218,7 @@ class Service:
         price = marks if marks else 0
         client_calls = getattr(getattr(self.council,'client',None),'calls',0)
         return dict(chain=self.cfg.chain,venue='coinbase_advanced',execution=self.cfg.execution,asset=f'{self.cfg.mint}/USDC',agent_mode=self.council.mode,
-                    bars_processed=state['bars_processed'],last_timestamp=state['last_timestamp'],
+                    sizing_mode=self.cfg.sizing_mode,bars_processed=state['bars_processed'],last_timestamp=state['last_timestamp'],
                     equity_usdc=book.equity(price),cash_usdc=book.cash,
                     gross_usdc=book.gross(price),net_usdc=book.net(price),
                     positions=[asdict(p) for p in book.positions],halted=book.halted,

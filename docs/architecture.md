@@ -33,3 +33,7 @@ O aquecimento não opera. Se o processo perder barras sem uma posição aberta, 
 As coletas de mercado/RPC são feitas antes da transação de escrita. O conselho LLM ainda roda na transação; se a cotação expirar durante a decisão, novas entradas são bloqueadas e o orçamento de chamadas é persistido. A mutação, a resposta idempotente e o evento entram juntos na transação SQLite. O feed público Coinbase pode sofrer cache, throttling e falhas; gaps nunca são sintetizados. O RPC público não é um endpoint de produção. Consulte o README para comandos e operação.
 
 O servidor pode iniciar seu worker com `serve --paper-worker`. Consulte [operação](operations.md) para persistência, readiness e supervisão.
+
+## Dimensionamento pelo saldo
+
+O perfil `available_balance` investe o caixa disponível depois do custo de entrada. O risco aprova o saldo inteiro ou recusa a entrada; não o reduz automaticamente. O perfil padrão limita a perda estimada a 2% por operação, respeita o orçamento diário restante de 2% e drawdown de 6%. O perfil `risk_budget` anterior mantém seus fingerprints e regras de dimensionamento. Mudança de perfil exige nova sessão e transferência auditada para continuidade do saldo.
