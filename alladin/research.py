@@ -84,7 +84,6 @@ def export(service,destination):
                    bar_return_mean=mean(returns) if returns else None,
                    bar_return_std=pstdev(returns) if returns else None,
                    halted=service.status()['halted'],halt_reason=service.status()['halt_reason'],
-                   llm_calls_process=getattr(getattr(service.council,'client',None),'calls',0),
                    warnings=['Dados sintéticos não medem vantagem preditiva nem prontidão de produção.',
                              'Fills usam premissas de custo e não são cotação/execução de rota.',
                              'Sem Sharpe anualizado: intervalo/amostra não justificam extrapolação.'])

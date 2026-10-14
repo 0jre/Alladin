@@ -7,7 +7,7 @@ Alladin é um backend Python de análise e paper trading para Solana mainnet. O 
 1. `CoinbaseMarket` coleta candles fechados do produto SOL-USDC, o livro, trades recentes e volume de 24 horas pelos endpoints públicos Coinbase Advanced Trade.
 2. O provedor recusa candles abertos, lacunas, produtos que não sejam SOL e snapshots sem bid/ask ou dados de trade válidos.
 3. `SolanaRPC` verifica mainnet e os dados SPL do mint por métodos de leitura.
-4. O motor calcula features e estratégias, o conselho escolhe LONG/HOLD/CLOSE e o risco determina se há aprovação e tamanho.
+4. O motor calcula features e estratégias, a sessão externa propõe LONG/HOLD/CLOSE e o risco determina se há aprovação e tamanho.
 5. `PaperBroker` atualiza a carteira local e o SQLite registra resposta idempotente e evento auditável.
 
 O aquecimento não opera. Se o processo perder barras sem uma posição aberta, o histórico é reaquececido com as barras mais recentes, sem fills retroativos. Com posição ou ordem pendente, um gap fecha ao mark atual verificado, registra o intervalo não observado e aciona halt persistente para revisão. Erros transitórios de fonte deixam a carteira intacta; o transporte faz retries limitados respeitando `Retry-After`, e `paper-live` agenda a próxima tentativa com backoff. O HTTP do Alladin traduz falhas persistentes de fonte em 503, nunca repassa o status upstream.
@@ -18,7 +18,7 @@ O aquecimento não opera. Se o processo perder barras sem uma posição aberta, 
 |---|---|
 | `providers.py` | Coleta de mercado Solana e RPC somente leitura |
 | `features.py`, `strategies.py` | Indicadores e propostas de estratégia |
-| `agents.py` | Conselho rules ou LLM com JSON Schema |
+| `agents.py` | Contratos e validação de decisões externas; baseline rules |
 | `risk.py` | Gates, dimensionamento e circuit breakers |
 | `broker.py` | Carteira paper, fills simulados e stops |
 | `engine.py` | Estado causal, comandos e idempotência |
@@ -30,7 +30,11 @@ O aquecimento não opera. Se o processo perder barras sem uma posição aberta, 
 
 `Config` aceita apenas `chain=solana`, `execution=paper` e `allowed_markets=["spot"]`. A lógica de decisão e risco é compartilhada pelo ciclo paper. O fill de `paper_tick` usa o midpoint Coinbase mais fee/slippage definidos em configuração; não é uma cotação de rota nem replica impacto/execução de swap.
 
-As coletas de mercado/RPC são feitas antes da transação de escrita. O conselho LLM ainda roda na transação; se a cotação expirar durante a decisão, novas entradas são bloqueadas e o orçamento de chamadas é persistido. A mutação, a resposta idempotente e o evento entram juntos na transação SQLite. O feed público Coinbase pode sofrer cache, throttling e falhas; gaps nunca são sintetizados. O RPC público não é um endpoint de produção. Consulte o README para comandos e operação.
+As coletas de mercado/RPC são feitas antes da transação de escrita. A análise dos
+agentes acontece na sessão consumidora, sem transação SQLite aberta e sem chamada
+de inferência pelo Alladin. Preparação e submissão são comandos separados e duráveis.
+Resposta idempotente, mutação e evento persistem na mesma transação. O feed público
+pode falhar ou limitar acesso; gaps não são sintetizados.
 
 O servidor pode iniciar seu worker com `serve --paper-worker`. Consulte [operação](operations.md) para persistência, readiness e supervisão.
 
@@ -58,23 +62,22 @@ flowchart TD
   R --> O["Paper broker e auditoria"]
 ```
 
-Os primeiros três relatórios não recebem respostas dos pares. O contestador vê os
-três e o gestor vê a revisão. Referências inexistentes, plano inválido, veto,
-desacordo direcional ou alteração incompatível com o risco impedem entrada. Sem
-candidato economicamente viável, o conselho se abstém antes de gastar chamadas.
+A sessão consumidora coordena os primeiros três relatórios sem revelar as respostas
+dos pares, fornece-os ao contestador e encaminha a revisão ao gestor. O backend
+valida referências, contratos, veto, desacordo e risco; não pode comprovar que os
+pareceres vieram de agentes independentes. Sem candidato econômico viável não
+emite tarefa de entrada.
 
-O backend mantém autoridade sobre dimensão, custos, loss budget e execução.
-Cada entrada registra o modelo, bundle e hash de evidência; a avaliação não junta
-modelos diferentes para sustentar uma alegação de taxa de acerto. `analyze`
-também persiste o consumo de chamadas LLM, sem agendar operação.
+Cada tarefa tem ID, hash do estado e das evidências, prazo de até 300 segundos e
+consumo único. Estado alterado, tarefa substituída ou vencida exige nova preparação.
+Em paper-live, preparação e submissão coletam observações novas fora da transação;
+a submissão recusa desvio de preço acima do limite, cotação vencida e contexto que
+atravessou o fechamento da próxima barra. O risco é reavaliado com o novo snapshot.
+Em replay, conserva-se a execução elegível na abertura da barra seguinte.
 
-`/v1/performance` usa operações encerradas do histórico auditável, incluindo
-perdas e custos, distingue origem controlada e apresenta intervalo de Wilson.
-Posições abertas e transferências sem histórico completo impedem alegações de
-validação completa. A qualificação é estatística condicional, não promessa.
+A auditoria registra sessão declarada pelo consumidor, protocolo, bundle e evidência.
+Não há SDK de inferência, modelo configurável, cliente de provedor ou orçamento de
+chamadas. Prompts não fornecem notícias ou dados on-chain que não foram coletados.
+`/v1/performance` mede PnL líquido e incerteza do histórico, sem prometer ganhos.
 
-A camada de prompts não fornece notícias, macro ou liquidez DEX que não tenham
-sido coletadas. O campo de lacunas informa essas ausências. O conselho LLM ainda
-requer chave/modelo e roda dentro da transação existente; cotação vencida durante
-a análise bloqueia novas entradas. Nenhuma taxa de acerto real foi demonstrada
-pela importação ou pelos testes de modelos falsos.
+Consulte [o protocolo externo](external-sessions.md) para os payloads e a integração.

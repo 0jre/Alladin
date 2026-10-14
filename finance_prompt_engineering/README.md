@@ -23,7 +23,7 @@ Nenhum prompt do diretório `upstream/` é carregado como instrução de execuç
 
 Os três primeiros relatórios são independentes em relação às respostas entre si.
 O contestador vê os três; o gestor vê a revisão completa. A execução continua
-spot paper na Solana, com preço Coinbase e RPC somente leitura. O modelo não
+spot paper na Solana, com preço Coinbase e RPC somente leitura. O agente da sessão não
 escolhe tamanho nem altera limites, e o backend pode recusar seu plano.
 
 ## Evidência em vez de conhecimento inventado
@@ -41,16 +41,16 @@ conclusões breves, evidências e invalidação, sem solicitar raciocínio priva
 
 ## Governança do plano
 
-- Recusa econômica antes de gastar chamadas de modelo quando não há candidato viável.
-- Referências inexistentes, plano sem stop, tamanho escolhido pelo modelo,
+- Recusa econômica antes de preparar uma tarefa externa quando não há candidato viável.
+- Referências inexistentes, plano sem stop, tamanho escolhido pelo agente,
   candidato inventado ou contrato inválido produzem abstenção.
 - Uma entrada exige suporte de pelo menos dois dos três analistas, sem bloqueio
   nem posição SHORT/CLOSE contrária nos relatórios. Consenso não é prova estatística.
 - O gestor pode ajustar stop/target/horizonte dentro do schema, mas o risco
   reavalia o resultado. Não se pode inventar alvo maior só para passar um gate.
 - Veto de entrada não impede uma decisão CLOSE para uma posição existente.
-- Bundle/version/hash, modelo e hash do envelope são registrados na auditoria.
-  Fills guardam o contexto de decisão para não misturar modelos na avaliação.
+- Bundle/version/hash, protocolo, sessão e hash do envelope são registrados na auditoria.
+  Fills guardam o contexto de decisão para identificar a origem da decisão na avaliação.
 
 ## Interfaces backend
 
@@ -74,13 +74,14 @@ no histórico avaliado. Dependência serial limita a interpretação binomial.
 898 ganhos e duas perdas grandes ainda podem produzir prejuízo. Até 900 ganhos
 em 900 observações não demonstram, com limite inferior de 95%, que a probabilidade
 real de ganho é pelo menos 898/900. Fixtures, trades controlados, dados de origem
-não registrada e mistura de modelos/bundles não validam uma estratégia autônoma.
+não registrada e mistura de contextos/bundles não validam uma estratégia autônoma.
 Nenhum relatório garante resultados futuros ou substitui teste cronológico fora
 da amostra. O pipeline existente de folds e estresse continua disponível.
 
 ## Estado de implantação
 
-`rules` permanece quantitativo. A biblioteca nova é usada pelo conselho `llm`,
-que exige chave e modelo configurados. Os testes de contratos usam modelo falso;
-nenhuma vantagem econômica é inferida deles. Atualizações do bundle exigem revisão,
-atualização explícita dos hashes do catálogo e reinício do processo.
+`external` é o padrão. A biblioteca é entregue aos agentes da sessão via HTTP/MCP;
+o backend não chama provedores, não configura modelos nem recebe credenciais de IA.
+`rules` permanece como baseline explícito. Fixtures de submissões verificam os
+contratos e não demonstram vantagem econômica. Atualizações do bundle exigem revisão,
+atualização explícita dos hashes e reinício. Veja [o protocolo](../docs/external-sessions.md).

@@ -20,7 +20,7 @@ class MCPTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         cfg = Config.load(os.path.join(os.path.dirname(__file__), '..', 'config.json'))
-        self.service = Service(cfg, os.path.join(self.tmp.name, 'session.sqlite'), 'rules', None, 20)
+        self.service = Service(cfg, os.path.join(self.tmp.name, 'session.sqlite'), 'rules')
 
     def tearDown(self):
         self.tmp.cleanup()

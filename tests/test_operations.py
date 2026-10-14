@@ -160,7 +160,6 @@ class OperationsTests(unittest.TestCase):
             service.command('paper_tick',{},'warm')
         clock=[now]
         def decide(state,*args):
-            state['llm_calls']=5
             clock[0]+=31
             return Proposal('LONG','spot',.8,.02,.06,24,'fixture','test'),{}
         with patch.object(service,'_collect_paper_data',return_value={'candles':bars,'snapshot':snap}), \
@@ -168,7 +167,6 @@ class OperationsTests(unittest.TestCase):
             result=service.command('paper_tick',{},'slow')
         self.assertEqual(result['decision']['proposal']['action'],'HOLD')
         self.assertIn('expirou',result['decision']['council']['error'])
-        self.assertEqual(service.status()['llm_calls_persisted'],5)
         self.assertEqual(service.status()['positions'],[])
 
     def test_fresh_quote_before_the_closed_bar_is_not_a_valid_entry_mark(self):

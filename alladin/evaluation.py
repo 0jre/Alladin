@@ -35,11 +35,11 @@ def assess_trades(trades,source,agent_mode,target_entries=900,max_nonwins=2):
     window=pnl[-target_entries:]
     nonwins=sum(value<=0 for value in window)
     target=(target_entries-max_nonwins)/target_entries
-    eligible=source=='coinbase_advanced_sol_spot' and agent_mode in {'rules','llm'}
+    eligible=source=='coinbase_advanced_sol_spot' and agent_mode in {'rules','external'}
     groups={}
     for row in rows:
         context=row.get('decision_context')
-        label={key:context.get(key) for key in ('agent_mode','model','prompt_bundle_sha256')} if isinstance(context,dict) else {'context':'unrecorded'}
+        label={key:context.get(key) for key in ('agent_mode','protocol','prompt_bundle_sha256')} if isinstance(context,dict) else {'context':'unrecorded'}
         key=json.dumps(label,sort_keys=True)
         groups.setdefault(key,{'context':label,'closed_roundtrips':0})['closed_roundtrips']+=1
         if 'entry_source' in row and row['entry_source']!='coinbase_advanced_sol_spot':
@@ -64,5 +64,5 @@ def assess_trades(trades,source,agent_mode,target_entries=900,max_nonwins=2):
             'The last chronological 900 closed trades are used for the default observed target; none are discarded.',
             'Wilson bounds assume binomial sampling; serial dependence and regime changes weaken inference.',
             'Source labels are metadata, not independent attestation of authentic market data.',
-            'Different models or prompt versions cannot be pooled to validate this target.',
+            'Different decision protocols or prompt versions cannot be pooled to validate this target.',
             'Controlled or fixture trades do not validate autonomous strategy performance.'])

@@ -18,7 +18,7 @@ from alladin.models import *
 from alladin.features import features
 from alladin.risk import approve,Approval,security_checks,update_breakers
 from alladin.broker import PaperBroker
-from alladin.agents import Council,OpenAIJSON,validate_report
+from alladin.agents import Council,validate_report
 from alladin.engine import Service
 from alladin.research import demo_feed,export
 from alladin.server import build_server
@@ -203,40 +203,16 @@ class AgentTests(unittest.TestCase):
         r=dict(stance='HOLD',score=.5,summary='x',evidence_keys=['invented'],concerns=[])
         with self.assertRaises(DataError):
             validate_report(r,{'price'})
-    def test_no_key_no_silent_rule_fallback(self):
-        with patch.dict(os.environ,{},clear=True):
-            p,a=Council('llm').decide(feature_fixture(),snapshot(),Portfolio(10000,10000,10000),Config(),1000)
+    def test_external_waits_without_credentials_or_network(self):
+        with patch.dict(os.environ,{},clear=True),patch('alladin.transport.HTTP.json',side_effect=AssertionError('inference forbidden')):
+            p,a=Council().decide(feature_fixture(),snapshot(),Portfolio(10000,10000,10000),Config(min_reward_risk=1.5),1000)
         self.assertEqual(p.action,'HOLD')
-        self.assertIn('error',a)
-    def test_llm_budget(self):
-        with patch.dict(os.environ,{'OPENAI_API_KEY':'test','OPENAI_MODEL':'test'}):
-            client=OpenAIJSON(max_calls=0)
-            with self.assertRaises(DataError):
-                client.ask('test',{}, {},'test')
-    def test_structured_council(self):
-        class Fake:
-            calls=0
-            def ask(self,role,evidence,schema,name):
-                if name=='manager':
-                    d=asdict(proposal())
-                    d.pop('mint',None)
-                    d.update(evidence_keys=['features.price','snapshot.price'],invalidation='Observed trend reversal',
-                             entry_conditions=['features.price'],exit_conditions=['configured_stop','configured_take'],
-                             counterevidence_keys=[])
-                    return d
-                return dict(stance='LONG',score=.8,summary='Brief assessment',evidence_keys=['features.price'],concerns=[],
-                            missing_data=[],invalidation='Trend reversal',risk_flags=[],blocking=False,score_is_probability=False)
-        p,a=Council('llm',client=Fake()).decide(feature_fixture(),snapshot(),Portfolio(10000,10000,10000),Config(min_reward_risk=1.5),1000)
-        self.assertEqual(p.action,'LONG')
-        self.assertEqual(len(a['reports']),5)
-    def test_refusal_holds(self):
-        class FakeHTTP:
-            def json(self,*args,**kwargs):
-                return {'status':'completed','output':[{'type':'message','content':[{'type':'refusal','refusal':'x'}]}]}
-        with patch.dict(os.environ,{'OPENAI_API_KEY':'test','OPENAI_MODEL':'test'}):
-            c=OpenAIJSON(http=FakeHTTP())
-            with self.assertRaises(DataError):
-                c.ask('test',{}, {},'test')
+        self.assertEqual(a['gate'],'awaiting_external_agents')
+        self.assertIn('task',a)
+
+    def test_embedded_inference_mode_is_rejected(self):
+        with self.assertRaises(ValueError):Council('llm')
+
 
 class ServiceTests(unittest.TestCase):
     def setUp(self):

@@ -1,0 +1,43 @@
+{
+  "architecture": "external-session-v1",
+  "default_mode": "external",
+  "embedded_inference": false,
+  "provider_api_keys_required": false,
+  "model_selection": false,
+  "execution": "solana spot paper only",
+  "commands": [
+    "prepare_decision",
+    "submit_decision"
+  ],
+  "local_validation": {
+    "unit_tests": 149,
+    "result": "passed",
+    "compile": "passed",
+    "diff_check": "passed",
+    "offline_wheel": "passed",
+    "isolated_wheel_import": "passed",
+    "wheel_sha256": "6ffaf4ed64921c36aa8c0535c4b909c1e1dcf786db3eb18ef32c8e6e5f8a4b4e"
+  },
+  "tested": [
+    "empty-provider-environment",
+    "no inference network",
+    "restart with pending task",
+    "idempotent submission",
+    "forged hash",
+    "halt changes context",
+    "replaced task",
+    "invalid plan becomes HOLD",
+    "fresh execution quote after external reasoning",
+    "stale quote rejection",
+    "price deviation rejection",
+    "new closed bar rejection",
+    "MCP external tools"
+  ],
+  "limits": [
+    "Tests submit deterministic fixtures, not live chat-agent investment decisions.",
+    "Session identity is caller-declared; role independence must be coordinated externally.",
+    "No automatic connector installation or deployment in ChatGPT/Claude/Grok.",
+    "GitHub Actions is not validated by these local checks.",
+    "Historical finance-prompt verification describes the earlier embedded prototype, superseded by this report."
+  ]
+}

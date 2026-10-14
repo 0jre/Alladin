@@ -27,6 +27,8 @@ CONTRACT = {
     'commands':{
         'paper_tick':{'args':[],'result':'read-only Coinbase SOL-USDC market data plus Solana RPC -> forward-only warmup or spot paper cycle; never signs or sends'},
         'ingest':{'args':['candle','snapshot'],'result':'closed bar -> agents -> risk -> pending paper action'},
+        'prepare_decision':{'args':[],'result':'frozen evidence, schemas and role prompts for external session agents; no inference'},
+        'submit_decision':{'args':['task_id','evidence_sha256','reports','decision','session_id'],'result':'validate externally produced reports and plan; risk recheck; paper only'},
         'analyze':{'args':[],'result':'analysis of stored data; does not schedule a trade'},
         'evaluate':{'args':['proposal'],'result':'risk approval only; does not execute'},
         'halt':{'args':[],'result':'latching stop; flatten on next valid bar'},
@@ -35,7 +37,7 @@ CONTRACT = {
         'admit':{'args':['snapshot'],'result':'classify a mint; does not trade'},
         'watch':{'args':['mint','arm (optional)'],'result':'move an eligible mint into the watched or negotiable book'},
         'unwatch':{'args':['mint'],'result':'drop a mint back to eligible and cancel its pending action'}},
-    'agent_flow':['paper_tick','analyze/evaluate','status/audit'],
+    'agent_flow':['paper_tick','prepare_decision','session agents and subagents','submit_decision','status/audit'],
     'mcp':{'command':'python -m alladin mcp','transport':'stdio'},
     'notes':['Backend Python; Solana mainnet only; spot paper only.',
              'paper_tick reads Coinbase Advanced Trade public SOL spot market data and read-only Solana RPC.',
@@ -160,5 +162,5 @@ def build_server(service,port=8080,token=None,runner=None):
             finally:
                 if locked:
                     mutation_lock.release()
-    # Reads/health remain available during LLM calls; one serialized command at a time.
+    # Reads/health remain available while external sessions deliberate; one serialized command at a time.
     return ThreadingHTTPServer(('127.0.0.1',port),Handler)

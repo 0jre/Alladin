@@ -42,7 +42,9 @@
             "universe",
             "admit",
             "watch",
-            "unwatch"
+            "unwatch",
+            "prepare_decision",
+            "submit_decision"
           ]
         },
         "args": {

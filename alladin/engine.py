@@ -13,12 +13,14 @@ from .universe import seed_primary, classify_snapshot
 from .providers import CoinbaseMarket, collect
 from .transport import DataError
 from .evaluation import assess_trades
+from .external import context_hash
+import uuid
 
 class Service:
     """One persistent state machine, serialized by SQLite write transactions."""
-    def __init__(self,cfg,db_path,agent_mode='rules',model=None,max_llm_calls=200,council=None):
+    def __init__(self,cfg,db_path,agent_mode='external',council=None):
         self.cfg,self.store = cfg,Store(db_path)
-        self.council = council or Council(agent_mode,model,max_llm_calls)
+        self.council = council or Council(agent_mode)
         config_payload = asdict(cfg)
         if cfg.sizing_mode == 'risk_budget':
             config_payload.pop('sizing_mode')  # retain fingerprints of existing risk-budget sessions
@@ -28,7 +30,7 @@ class Service:
     def _ensure(self,state):
         for key,default in [('series',{}),('pending_book',{}),('blocked_mints',{}),
                             ('universe',{}),('memory',[]),
-                            ('curve',[]),('history',[]),('llm_calls',0),
+                            ('curve',[]),('history',[]),('external_task',None),
                             ('bars_processed',0),('pending',None),('snapshot',None),
                             ('last_timestamp',None),('last_digest',None),
                             ('last_price',None),('last_decision',None)]:
@@ -51,8 +53,6 @@ class Service:
     def _decide(self,state,f,s,book,end):
         if book.halted:
             return replace(Proposal(thesis='Sessão bloqueada: '+book.halt_reason),mint=s.mint),{'gate':'halted','mode':self.council.mode}
-        if hasattr(self.council,'client'):
-            self.council.client.calls = max(getattr(self.council.client,'calls',0),state.get('llm_calls',0))
         if hasattr(self.council,'memory'):
             self.council.memory = list(state.get('memory',[]))
         evidence_features=dict(f)
@@ -60,9 +60,93 @@ class Service:
             evidence_features['bar_closed_at']=state['history'][-1]['timestamp']+self.cfg.timeframe_seconds
         evidence_features['timeframe_seconds']=self.cfg.timeframe_seconds
         p,audit = self.council.decide(evidence_features,s,book,self.cfg,end)
-        if hasattr(self.council,'client'):
-            state['llm_calls'] = self.council.client.calls
         return replace(p,mint=s.mint),audit
+    def _prepare_external(self,db,state,book,f,s,now,args):
+        if args or self.council.mode!='external':
+            raise ValueError('prepare_decision exige modo external e nenhum argumento')
+        if state['bars_processed']<self.cfg.warmup_bars:
+            raise ValueError('Aquecimento obrigatório')
+        _,audit=self._decide(state,f,s,book,now)
+        task=audit.pop('task',None)
+        if task is None:
+            return dict(result='abstained',council=audit)
+        created=int(time.time())
+        if state.get('input_mode')=='paper_live' and not -5<=created-s.timestamp<=min(30,self.cfg.max_snapshot_age_seconds):
+            raise DataError('Cotação expirou; colete novo contexto antes de preparar')
+        task.update(id=uuid.uuid4().hex,context_sha256=context_hash(state),
+                    evidence_sha256=audit['evidence_sha256'],created_at=created,
+                    expires_at=created+min(300,self.cfg.timeframe_seconds),
+                    status='prepared',protocol='external-session-v1')
+        state['external_task']=task
+        self.store.save(db,state)
+        self.store.event(db,created,'prepare_decision',dict(id=task['id'],evidence_sha256=task['evidence_sha256']))
+        return dict(result='awaiting_external_agents',task=task)
+
+    def _submit_external(self,db,state,book,f,s,now,args,fresh=None):
+        required={'task_id','evidence_sha256','reports','decision','session_id'}
+        if self.council.mode!='external' or set(args)!=required:
+            raise ValueError('submit_decision exige task_id, evidence_sha256, reports, decision e session_id')
+        if not isinstance(args['session_id'],str) or not 1<=len(args['session_id'])<=200:
+            raise ValueError('session_id inválido; não envie credenciais')
+        task=state.get('external_task')
+        if not task or task['id']!=args['task_id'] or task['status']!='prepared':
+            raise ValueError('Tarefa inexistente, substituída ou já consumida')
+        if args['evidence_sha256']!=task['evidence_sha256'] or context_hash(state)!=task['context_sha256']:
+            raise ValueError('Contexto mudou; prepare uma nova decisão')
+        wall=int(time.time())
+        if wall>task['expires_at'] or wall<task['created_at']-5:
+            raise ValueError('Tarefa expirada; prepare uma nova decisão')
+        live=state.get('input_mode')=='paper_live'
+        execution_snapshot=fresh if live else s
+        if live:
+            if execution_snapshot is None or not -5<=wall-execution_snapshot.timestamp<=min(30,self.cfg.max_snapshot_age_seconds):
+                raise DataError('Cotação expirada; nenhuma operação executada')
+            if wall>=state['last_timestamp']+2*self.cfg.timeframe_seconds:
+                raise ValueError('Nova barra fechou; atualize o feed e prepare nova decisão')
+            if abs(execution_snapshot.price/s.price-1)>self.cfg.max_entry_gap_fraction:
+                raise ValueError('Preço desviou do contexto; prepare nova decisão')
+        ef=dict(f,bar_closed_at=state['last_timestamp']+self.cfg.timeframe_seconds,
+                timeframe_seconds=self.cfg.timeframe_seconds)
+        self.council.memory=list(state.get('memory',[]))
+        p,audit=self.council.decide(ef,s,book,self.cfg,now,
+            submission={k:args[k] for k in ('reports','decision')})
+        if audit.get('evidence_sha256')!=task['evidence_sha256']:
+            raise ValueError('Evidências divergentes')
+        audit['session_id']=args['session_id']
+        mark=execution_snapshot
+        approval=approve(p,ef,mark,book,self.cfg,wall if live else now,mark.price,state['universe'].get(s.mint))
+        audit['execution_snapshot']=asdict(mark)
+        audit['task_id']=task['id']
+        events=[]
+        if live:
+            broker=PaperBroker(book,self.cfg)
+            events.extend(broker.on_mark(mark.price,wall,s.mint))
+            update_breakers(book,self.cfg,mark.price,wall)
+            if book.halted:
+                events.extend(broker.flatten(mark.price,wall,'circuit_breaker',mint=s.mint))
+            approval=approve(p,ef,mark,book,self.cfg,wall,mark.price,state['universe'].get(s.mint))
+            if p.action=='CLOSE' and not book.halted:
+                events.extend(broker.close(pos,mark.price,wall,'external_session_exit')
+                              for pos in list(book.positions) if pos.mint==s.mint and pos.market=='spot')
+            elif p.action=='LONG' and approval.approved and not book.halted:
+                events.append(self._execute_entry(broker,p,approval,mark.price,wall,state,decision_audit=audit,source=mark.source))
+            state['curve'].append(dict(timestamp=wall,equity=book.equity(mark.price),price=mark.price,
+                                       gross=book.gross(mark.price),net=book.net(mark.price)))
+            state['curve']=state['curve'][-2000:]
+            state['portfolio']=book.serialize()
+            state['snapshot']=asdict(mark)
+            state['last_price']=mark.price
+            self._remember(state,events)
+        elif p.action in {'LONG','CLOSE'} and approval.approved and not book.halted:
+            state['pending']=dict(proposal=asdict(p),decision_at=now)
+        decision=dict(timestamp=now,proposal=asdict(p),approval=asdict(approval),council=audit)
+        state['last_decision']=decision
+        task['status']='consumed'
+        result=dict(result='submitted',decision=decision,events=events,execution='paper' if live else 'next_replay_bar')
+        self.store.save(db,state)
+        self.store.event(db,wall,'submit_decision',dict(task_id=task['id'],session_id=args['session_id'],**result))
+        return result
+
     def _remember(self,state,events):
         for e in events:
             if isinstance(e,dict) and e.get('event') == 'CLOSE':
@@ -75,7 +159,7 @@ class Service:
             raise ValueError('Alladin só permite posições spot')
         event=broker.open(p,a,price,ts)
         decision=(state.get('last_decision') or {}).get('council',{}) if decision_audit is None else decision_audit
-        event['decision_context']=dict(agent_mode=self.council.mode,model=decision.get('model'),
+        event['decision_context']=dict(agent_mode=self.council.mode,protocol=decision.get('protocol'),session_id=decision.get('session_id'),
             prompt_bundle_sha256=(decision.get('prompt_pack') or {}).get('bundle_sha256'),
             evidence_sha256=decision.get('evidence_sha256'))
         event['source']=source or (state.get('snapshot') or {}).get('source')
@@ -228,7 +312,6 @@ class Service:
                 marks[mint] = series['last_price']
         # Per-mint marks: a scalar price would misprice positions of other mints.
         price = marks if marks else 0
-        client_calls = getattr(getattr(self.council,'client',None),'calls',0)
         return dict(chain=self.cfg.chain,venue='coinbase_advanced',execution=self.cfg.execution,asset=f'{self.cfg.mint}/USDC',agent_mode=self.council.mode,
                     sizing_mode=self.cfg.sizing_mode,bars_processed=state['bars_processed'],last_timestamp=state['last_timestamp'],
                     equity_usdc=book.equity(price),cash_usdc=book.cash,
@@ -240,8 +323,7 @@ class Service:
                     last_decision=state['last_decision'],
                     series={m:dict(bars_processed=s['bars_processed'],last_price=s['last_price'])
                             for m,s in state.get('series',{}).items()},
-                    llm_calls_process=client_calls,
-                    llm_calls_persisted=state.get('llm_calls',0),
+                    external_task=state.get('external_task'),
                     universe={k:v['status'] for k,v in state.get('universe',{}).items()},
                     blocked_mints=sorted(state.get('blocked_mints',{})))
     def performance(self):
@@ -276,7 +358,7 @@ class Service:
                 return self._serialized_command(name,args,key)
         return self._serialized_command(name,args,key)
     def _serialized_command(self,name,args,key):
-        allowed = {'ingest','paper_tick','analyze','evaluate','halt','finalize','universe','admit','watch','unwatch'}
+        allowed = {'ingest','paper_tick','analyze','evaluate','halt','finalize','universe','admit','watch','unwatch','prepare_decision','submit_decision'}
         if not isinstance(name,str) or name not in allowed:
             raise ValueError('Comando desconhecido ou não permitido')
         if not isinstance(args,dict):
@@ -292,6 +374,15 @@ class Service:
                 if state.get('input_mode') not in (None,mode):
                     raise ValueError('Não misture paper-live e replay no mesmo banco')
         paper_data = self._collect_paper_data(args) if name == 'paper_tick' else None
+        if name in {'prepare_decision','submit_decision'} and state.get('input_mode')=='paper_live':
+            # Reasoning runs in the caller's session. Refresh execution observations
+            # outside the write transaction; bind the submission again inside it.
+            if not state['history']:
+                raise ValueError('Feed obrigatório')
+            provider=self._provider or CoinbaseMarket()
+            candles=[Candle(**row) for row in state['history']]
+            paper_data={'snapshot':collect(self.cfg.mint,market=lambda:provider.market(
+                self.cfg.mint,candles=candles,timeframe_seconds=self.cfg.timeframe_seconds))}
         with self.store.transaction() as db:
             return self.store.once(db,key,dict(command=name,args=args),
                                    lambda:self._command(db,name,args,paper_data))
@@ -504,11 +595,20 @@ class Service:
         s = Snapshot(**state['snapshot'])
         # Analysis uses the last closed bar timestamp. Live freshness status separately.
         now = max(state['last_timestamp']+self.cfg.timeframe_seconds,s.timestamp)
+        if name == 'prepare_decision':
+            if paper_data is not None:
+                s=paper_data['snapshot']
+                state['snapshot']=asdict(s)
+                state['last_price']=s.price
+                now=max(now,s.timestamp)
+            return self._prepare_external(db,state,book,f,s,now,args)
+        if name == 'submit_decision':
+            return self._submit_external(db,state,book,f,s,now,args,fresh=(paper_data or {}).get('snapshot'))
         if name == 'analyze':
             if args:
                 raise ValueError('analyze não aceita argumentos')
             p,audit = self._decide(state,f,s,book,now)
-            self.store.save(db,state)  # persist analysis call budget; no trade is scheduled
+            self.store.save(db,state)  # analysis never schedules a trade
             result = dict(features=f,snapshot=asdict(s),proposal=asdict(p),council=audit,
                           approval=asdict(approve(p,f,s,book,self.cfg,now)),as_of=now,
                           wallclock_age_seconds=int(time.time())-now)

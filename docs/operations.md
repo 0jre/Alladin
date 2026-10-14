@@ -10,7 +10,7 @@ estimado é 2% por entrada, limitado também pela perda diária restante de 2% e
 pelo drawdown máximo de 6%. Stops, liquidez ou exposição que não comportem o
 saldo inteiro bloqueiam a entrada; não há redução silenciosa para um lote menor.
 Limites de perda usam estimativas do modelo; um gap pode ultrapassar o stop.
-O motor `rules` usa estratégias quantitativas; `llm` exige configuração explícita.
+O padrão `external` aguarda agentes da sessão; `rules` é um baseline quantitativo explícito.
 HOLD é uma decisão válida. O serviço não força entradas para produzir trades. O risco inclui custos variáveis e taxas fixas de ida e volta, relevantes numa conta pequena.
 
 ## Iniciar servidor e worker
@@ -94,10 +94,13 @@ sudo systemctl enable --now alladin
 sudo journalctl -u alladin -f
 ```
 
-O ambiente deve conter `LAB_API_TOKEN`. Para conselho LLM, inclua `OPENAI_API_KEY`
-e `OPENAI_MODEL`, e acrescente `--agents llm` antes de `serve` no `ExecStart`.
-Sem isso, a operação usa `rules`. O orçamento de chamadas não substitui o limite
-de gastos configurado no provedor de modelos.
+O ambiente HTTP deve conter somente `LAB_API_TOKEN` para autenticar o acesso ao
+backend. Nenhuma credencial de IA é necessária. MCP stdio dispensa esse token.
+O worker padrão coleta dados, administra proteção das posições e aguarda decisões
+externas. Para operar novas entradas, a sessão consumidora precisa chamar
+`prepare_decision` e `submit_decision`; iniciar o worker não inicia inferência.
+Veja [o protocolo externo](external-sessions.md). Bancos anteriores `rules` exigem
+`--agents rules` antes de `serve`, sem reescrever seu histórico.
 
 ## Container
 

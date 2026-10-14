@@ -23,9 +23,7 @@ def main():
     parser = argparse.ArgumentParser(description='Solana-only research backend; paper execution and read-only market data.')
     parser.add_argument('--config',default='config.json')
     parser.add_argument('--db',default='data/session.sqlite')
-    parser.add_argument('--agents',choices=['rules','llm'],default='rules')
-    parser.add_argument('--model',default=None)
-    parser.add_argument('--max-llm-calls',type=int,default=200)
+    parser.add_argument('--agents',choices=['external','rules'],default='external')
     sub = parser.add_subparsers(dest='command',required=True)
     demo = sub.add_parser('generate-demo'); demo.add_argument('--output',default='data/demo.jsonl'); demo.add_argument('--bars',type=int,default=600)
     run = sub.add_parser('replay'); run.add_argument('--feed',required=True); run.add_argument('--output',default='results'); run.add_argument('--finalize',action='store_true')
@@ -55,20 +53,14 @@ def main():
             d = json.loads(Path(args.request).read_text())
             result = BackendClient(args.url).command(d['command'],d['args'],args.key)
         else:
-            if not 1 <= args.max_llm_calls <= 10000:
-                raise ValueError('Limite de chamadas: 1–10000')
             cfg = Config.load(args.config)
-            if args.agents == 'llm' and (args.command in {'paper-live','paper-tick','replay'}
-                    or args.command == 'serve' and args.paper_worker):
-                if not os.environ.get('OPENAI_API_KEY') or not (args.model or os.environ.get('OPENAI_MODEL')):
-                    raise ValueError('Modo llm exige OPENAI_API_KEY e OPENAI_MODEL ou --model')
             if args.command == 'validate':
                 if args.agents != 'rules':
-                    raise ValueError('Validação por folds nesta versão aceita rules; avaliação LLM ainda pendente')
+                    raise ValueError('Validação por folds nesta versão aceita rules; sessões externas exigem agente conectado')
                 result=validate(cfg,args.feed,args.output,args.folds)
                 print(json.dumps(result,indent=2,ensure_ascii=False,allow_nan=False))
                 return 0
-            service = Service(cfg,args.db,args.agents,args.model,args.max_llm_calls)
+            service = Service(cfg,args.db,args.agents)
             if args.command == 'mcp':
                 return serve_mcp(service)
             if args.command == 'paper-tick':

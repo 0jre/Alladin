@@ -109,7 +109,7 @@ class LegacyStateTests(unittest.TestCase):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         cfg = Config()
-        service = Service(cfg, Path(temp.name) / 'old.sqlite')
+        service = Service(cfg, Path(temp.name) / 'old.sqlite',agent_mode='rules')
         book = Portfolio(10000, 10000, 10000)
         legacy = dict(config_hash=service.fingerprint, agent_mode='rules',
                       portfolio=book.serialize())

@@ -113,7 +113,18 @@ class FinanceCouncilTests(unittest.TestCase):
         if change:f,s,b,c=change(f,s,b,c)
         if book:b=book
         client=client or ModelFixture()
-        p,a=Council('llm',client=client).decide(f,s,b,c,1000)
+        council=Council('external')
+        p,a=council.decide(f,s,b,c,1000)
+        if 'task' in a:
+            task=a['task'];e=task['evidence'];reports={}
+            try:
+                for name in ['market','onchain','flow','challenger']:
+                    inp=deepcopy(e);inp['prior_reports']=deepcopy(reports) if name=='challenger' else {}
+                    reports[name]=validate_report(client.ask(task['instructions'][name],inp,REPORT_SCHEMA,name),e['evidence_registry'])
+                decision={} if any(r['blocking'] for r in reports.values()) and not b.positions else client.ask(task['instructions']['manager'],{**deepcopy(e),'reports':deepcopy(reports)}, {},'manager')
+                p,a=council.decide(f,s,b,c,1000,submission={'reports':reports,'decision':decision})
+            except (ValueError,DataError) as exc:
+                p=Proposal();a={'error':str(exc)}
         return p,a,client
 
     def test_valid_plan_has_traceable_prompts_evidence_and_final_risk_recheck(self):
@@ -269,21 +280,6 @@ class PerformanceTests(unittest.TestCase):
             self.assertFalse(result['isError'])
             self.assertFalse(json.loads(result['content'][0]['text'])['target']['sample_sufficient'])
 
-    def test_analyze_persists_model_budget_without_scheduling_a_trade(self):
-        class CountingCouncil:
-            mode='rules'
-            def __init__(self):self.client=SimpleNamespace(calls=0)
-            def decide(self,*args):
-                self.client.calls+=1
-                return Proposal(),{'mode':'fixture'}
-        with tempfile.TemporaryDirectory() as tmp:
-            service=Service(Config(),Path(tmp)/'budget.sqlite',council=CountingCouncil())
-            snapshot=fixture()[1]
-            service.command('ingest',{'candle':asdict(Candle(900,100,101,99,100,10000)),
-                                     'snapshot':asdict(snapshot)},'bar')
-            service.command('analyze',{},'analysis')
-            self.assertEqual(service.status()['llm_calls_persisted'],1)
-            self.assertIsNone(service.status()['pending'])
 
 
 if __name__=='__main__':unittest.main()

@@ -32,6 +32,8 @@ def tools():
         _tool('alladin_contract', 'Contrato de comandos do Alladin.', {}),
         _tool('paper_tick', 'Coleta candles, livro e trades públicos da Coinbase mais snapshot RPC somente leitura da Solana; aquece com OHLCV real e processa no máximo uma barra paper spot. Não acessa carteira nem envia transação.', {}),
         _tool('ingest', 'Barra fechada e snapshot. O conselho decide; a entrada paper sai na barra seguinte.', {'candle': {'type': 'object'}, 'snapshot': {'type': 'object'}}, ('candle', 'snapshot')),
+        _tool('prepare_decision', 'Prepara evidências e prompts para os agentes da sessão. Não faz inferência.', {}),
+        _tool('submit_decision', 'Valida pareceres externos e plano; execução somente paper.', {k:{'type':'object' if k in {'reports','decision'} else 'string'} for k in ['task_id','evidence_sha256','reports','decision','session_id']}, ('task_id','evidence_sha256','reports','decision','session_id')),
         _tool('analyze', 'Analisa o que está gravado. Não agenda operação.', optional),
         _tool('evaluate', 'Valida risco de uma proposta. Não executa.', {'proposal': {'type': 'object'}}, ('proposal',)),
         _tool('halt', 'Bloqueia entradas e fecha na próxima barra válida.', optional),
@@ -77,7 +79,7 @@ def handle(service, message):
             'protocolVersion': version if version in ACCEPTED else PROTOCOL,
             'capabilities': {'tools': {'listChanged': False}, 'prompts': {'listChanged': False}},
             'serverInfo': {'name': 'alladin', 'version': __version__},
-            'instructions': 'Alladin roda apenas Solana spot em paper. paper_tick coleta mercado atual, toma decisões com o motor configurado e registra apenas fills simulados. Nunca conecte carteira nem assine transação.',
+            'instructions': 'Alladin roda apenas Solana spot em paper. paper_tick coleta mercado atual, aguarda decisões enviadas pelos agentes da sessão em modo external e registra apenas fills simulados. Nunca conecte carteira nem assine transação.',
         }
     if method == 'ping':
         return {}

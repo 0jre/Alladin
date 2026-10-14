@@ -1,6 +1,6 @@
 # Alladin
 
-O módulo [Alladin Finance Prompt Engineering](finance_prompt_engineering/README.md) incorpora o repositório solicitado sem `.git`, preserva os originais e fornece uma biblioteca ativa de prompts para o conselho LLM. Há cinco papéis com evidências citáveis, contestação, plano estruturado e revalidação determinística de risco.
+O módulo [Alladin Finance Prompt Engineering](finance_prompt_engineering/README.md) incorpora o repositório solicitado sem `.git`, preserva os originais e fornece uma biblioteca ativa de prompts para os agentes da sessão externa. Há cinco papéis com evidências citáveis, contestação, plano estruturado e revalidação determinística de risco.
 
 `GET /v1/prompts`, `GET /v1/prompts/{role}` e MCP `prompts/list`/`prompts/get` disponibilizam a biblioteca revisada. `GET /v1/performance` e `python -m alladin performance` mostram estatísticas líquidas e incerteza. A meta de 898–899 acertos em 900 operações é apenas um critério de pesquisa, não uma capacidade demonstrada nem promessa de lucro.
 
@@ -10,7 +10,7 @@ Backend Python de pesquisa e paper trading **exclusivamente na Solana mainnet**,
 
 `paper-live` usa candles fechados, livro, trades recentes e volume de 24 horas do mercado spot SOL-USDC da Coinbase Advanced Trade. O RPC Solana é usado apenas para confirmar mainnet e dados do mint. O primeiro comando só aquece os indicadores; os próximos processam cada barra fechada uma vez. Barras faltantes, feed atrasado, snapshot stale ou erro de provedor interrompem o ciclo sem preencher retroativamente. A negociação acompanha o ativo SOL da Solana, enquanto os preços refletem o mercado centralizado da Coinbase.
 
-O motor quantitativo ou o conselho LLM usa os mesmos sinais, filtros e limites de risco configurados para o fluxo paper do Alladin. O saldo inicial padrão é **20 USDC**. As entradas e saídas são registradas localmente contra o midpoint atual da Coinbase, somando as taxas/slippage configuradas. Isso não é uma ordem Coinbase, uma cotação executável nem garantia de que um fill real teria esse preço. Não use os resultados como evidência de rentabilidade.
+O backend fornece os mesmos sinais, filtros e limites de risco configurados para o fluxo paper do Alladin. O saldo inicial padrão é **250 USDC**. As entradas e saídas são registradas localmente contra o midpoint atual da Coinbase, somando as taxas/slippage configuradas. Isso não é uma ordem Coinbase, uma cotação executável nem garantia de que um fill real teria esse preço. Não use os resultados como evidência de rentabilidade.
 
 Os endpoints públicos da Coinbase podem cachear ou limitar respostas; snapshots usam `Cache-Control: no-cache`. O RPC público tem limites e não é recomendado pela Solana para produção. Para serviço contínuo, configure provedores estáveis, supervisão, alertas e validação econômica independente.
 
@@ -32,17 +32,30 @@ Esta mudança de perfil exige um banco novo; não reconfigure silenciosamente um
 
 Leia o [guia de operação](docs/operations.md) para persistência, readiness, supervisão Linux, container, gaps e retomada. `GET /health` confirma processo ativo; `GET /ready` verifica prontidão de coleta e worker. O template systemd está em `deploy/alladin.service`.
 
-## Escolher o motor de decisão
+## Agentes da própria sessão
 
-O padrão `--agents rules` é uma referência quantitativa reproduzível, não IA. Para habilitar o conselho LLM:
+O padrão é `--agents external`. Alladin não carrega modelos, não realiza inferência e
+não recebe credenciais de provedores de IA. ChatGPT Work, Codex, Claude/CLI, Grok e
+outros consumidores fazem a análise na própria sessão e chamam as ferramentas.
 
-```bash
-export OPENAI_API_KEY="<chave da API>"
-export OPENAI_MODEL="<modelo compatível com Responses API e Structured Outputs>"
-python3 -m alladin --agents llm --max-llm-calls 200 --db data/llm-paper.sqlite paper-live
-```
+1. `paper_tick` aquece/atualiza o feed e administra stops e bloqueios existentes.
+2. `prepare_decision` retorna evidências, hashes, schemas e instruções dos cinco papéis.
+3. A sessão coordena mercado/Solana/fluxo sem compartilhar respostas entre eles;
+   depois fornece os três pareceres ao contestador e a revisão ao gestor.
+4. `submit_decision` recebe os quatro pareceres e o plano do gestor, vinculados ao
+   `task_id` e `evidence_sha256`. O backend valida contratos, consenso e risco.
+5. Em paper-live, coleta nova cotação, verifica desvio/frescor e registra o fill paper;
+   em replay, uma proposta aprovada fica para a abertura da próxima barra.
 
-Os agentes podem propor LONG, HOLD ou CLOSE e justificar a proposta com evidências coletadas pelo backend. Não escolhem notional, não alteram limites, não recebem segredos e não executam código. Se um agente ou provedor falha, o ciclo não deve produzir uma nova entrada. Configure limite financeiro no provedor de modelos; o orçamento de chamadas por processo não é limite em dólares.
+Sem consumidor externo executando esse ciclo, o worker coleta dados e aguarda;
+ele não cria agentes nem raciocina sozinho. Subagentes são criados pela sessão
+consumidora conforme os recursos disponíveis nela. A independência dos pareceres
+é uma obrigação do coordenador: quatro objetos JSON não provam quatro agentes.
+Veja [o protocolo de integração](docs/external-sessions.md).
+
+`--agents rules` permanece uma referência quantitativa explícita para pesquisa.
+Bancos antigos preservam o modo original: use `--agents rules` para reabri-los.
+Não altere o modo ou zere saldos de uma sessão existente silenciosamente.
 
 ## Interface para agentes
 
@@ -53,7 +66,7 @@ export LAB_API_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(
 python3 -m alladin --db data/backend.sqlite serve --port 8080
 ```
 
-O cliente envia `Authorization: Bearer <LAB_API_TOKEN>`, `Content-Type: application/json` e `Idempotency-Key` em `POST /v1/commands`. Endpoints disponíveis:
+O token HTTP protege acesso ao backend; não é uma credencial de inferência. Via MCP stdio não há token. O cliente HTTP envia `Authorization: Bearer <LAB_API_TOKEN>`, `Content-Type: application/json` e `Idempotency-Key` em `POST /v1/commands`. Endpoints disponíveis:
 
 | Endpoint/comando | Uso |
 |---|---|
@@ -64,12 +77,13 @@ O cliente envia `Authorization: Bearer <LAB_API_TOKEN>`, `Content-Type: applicat
 | `GET /v1/audit/verify` | Verifica o encadeamento de hashes dos eventos |
 | `paper_tick` | Coleta read-only de mercado Solana e processa um ciclo paper futuro |
 | `ingest` | Injeta barra fechada + snapshot Solana validados; útil para feeds próprios/testes |
+| `prepare_decision`, `submit_decision` | Contexto para a sessão e validação da decisão externa |
 | `analyze`, `evaluate` | Análise e validação de risco, sem enviar ordens |
 | `halt`, `finalize` | Para novas entradas ou fecha a sessão paper |
 
 Exemplo de corpo: `{"command":"paper_tick","args":{}}`. A chave de idempotência deve ser nova por ciclo lógico; repetir a mesma chave e mesmo conteúdo devolve a resposta persistida. Uma chave reutilizada com conteúdo diferente é recusada.
 
-MCP stdio está disponível com `python3 -m alladin mcp` e oferece os mesmos comandos paper/status/auditoria. Não há comandos para carteira, order routing, shell ou configuração dinâmica.
+MCP stdio não exige chave ou token de IA. Está disponível com `python3 -m alladin mcp` e oferece os mesmos comandos paper/status/auditoria. Não há comandos para carteira, order routing, shell ou configuração dinâmica.
 
 ## Modelo quantitativo e limites
 
