@@ -113,7 +113,7 @@ fase de rede e compatibilidade econômica dos planos padrão. `proxy_tunnel`
 indica falha anterior à resposta da API, que exige verificar o acesso do ambiente
 aos hosts públicos. Limites de risco não são relaxados para produzir negociações.
 
-O runtime não contém cliente RPC nem configuração `SOLANA_RPC_URL`. A fonte externa única é a Coinbase. O protocolo `external-session-v2` usa o papel `quality` no lugar de `onchain`; o bundle ativo é 2.0.0. Campos on-chain de snapshots antigos são compatibilidade de histórico e não aparecem no envelope de evidências.
+O runtime não contém cliente RPC nem configuração `SOLANA_RPC_URL`. A fonte externa única é a Coinbase. O protocolo `external-session-v2` usa o papel `quality` no lugar de `onchain`; o bundle ativo é 2.1.0. Campos on-chain de snapshots antigos são compatibilidade de histórico e não aparecem no envelope de evidências.
 
 O perfil demo agora declara retorno/risco líquido mínimo de **1,5**, mantendo
 **2%** de perda estimada por operação e por dia e **6%** de drawdown. Os custos e

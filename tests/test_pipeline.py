@@ -48,7 +48,10 @@ class PipelineTests(unittest.TestCase):
 
     def submission(self,task,action):
         if action=='LONG':
-            decision=dict(task['evidence']['candidates'][0]);decision.pop('mint')
+            decision=(dict(task['evidence']['candidates'][0]) if task['evidence']['candidates'] else
+                      dict(Proposal('LONG','spot',.8,.01,.026,4,
+                           'Offline evidence-backed hypothesis','external_hypothesis').__dict__))
+            decision.pop('mint')
             self.last_decision=dict(decision)
         else:decision=dict(self.last_decision,action=action)
         decision.update(evidence_keys=['features.ema_gap','snapshot.price'],invalidation='Fixture trend invalidation',
@@ -96,6 +99,42 @@ class PipelineTests(unittest.TestCase):
             self.assertFalse(response['isError'],response)
             return json.loads(response['content'][0]['text'])
         self.roundtrip(call)
+
+    def test_external_strategy_roundtrip_without_internal_candidate(self):
+        with patch('alladin.agents.candidates',return_value=[]):
+            self.service.command('paper_tick',{},'warm')
+            first=self.service.command('prepare_decision',{},'prepare')['task']
+            self.assertEqual(first['evidence']['candidates'],[])
+            self.assertTrue(first['evidence']['decision_policy']['external_strategies_allowed'])
+            args=self.submission(first,'LONG')
+            opened=self.service.command('submit_decision',args,'entry')
+            self.assertEqual(opened['events'][0]['event'],'OPEN',opened)
+            self.assertEqual(self.service.status()['positions'][0]['strategy'],'external_hypothesis')
+            self.assertEqual(self.service.command('submit_decision',args,'entry'),opened)
+            second=self.service.command('prepare_decision',{},'exit-task')['task']
+            closed=self.service.command('submit_decision',self.submission(second,'CLOSE'),'exit')
+            self.assertEqual(closed['events'][0]['event'],'CLOSE',closed)
+            self.assertEqual(self.service.status()['positions'],[])
+            self.assertEqual(self.service.status()['closed_trades'],1)
+            self.assertTrue(self.service.store.verify_audit()['valid'])
+
+    def test_external_strategy_without_baseline_cannot_bypass_risk_or_consensus(self):
+        with patch('alladin.agents.candidates',return_value=[]):
+            self.service.command('paper_tick',{},'warm')
+            for case in ('risk','consensus'):
+                task=self.service.command('prepare_decision',{},'prepare-'+case)['task']
+                args=self.submission(task,'LONG')
+                if case=='risk':
+                    args['decision'].update(stop_fraction=.05,take_fraction=.15)
+                else:
+                    for name in ('market','flow'):args['reports'][name]['stance']='HOLD'
+                result=self.service.command('submit_decision',args,'submit-'+case)
+                self.assertEqual(result['events'],[],result)
+                self.assertEqual(result['decision']['proposal']['action'],'HOLD')
+                self.assertEqual(result['decision']['council']['gate'],
+                                 'manager_risk_veto' if case=='risk' else 'consensus_abstention')
+            self.assertEqual(self.service.status()['cash_usdc'],250)
+            self.assertEqual(self.service.status()['positions'],[])
 
     def test_failed_source_retries_same_key_without_resetting_or_filling(self):
         with patch('alladin.transport.HTTP.json',side_effect=DataError('fixture blocked',code='network_timeout',stage='proxy_tunnel')):

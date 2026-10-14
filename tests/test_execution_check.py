@@ -102,6 +102,7 @@ class ExecutionCheckTests(PipelineTests):
         f.update(regime='range',efficiency=.4,rsi=50,zscore=0)
         with patch('alladin.engine.features',return_value=f):
             result=self.service.command('prepare_decision',{},'no-signal')
-        self.assertEqual(result['result'],'abstained')
-        self.assertEqual(result['council']['gate'],'signal_abstention')
+        self.assertEqual(result['result'],'awaiting_external_agents')
+        self.assertEqual(result['task']['evidence']['candidates'],[])
+        self.assertTrue(result['task']['evidence']['decision_policy']['external_strategies_allowed'])
         self.assertEqual(self.service.status()['positions'],[])

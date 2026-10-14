@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0",
+  "version": "2.1.0",
   "system": "system.md",
   "roles": {
     "market": {
@@ -70,10 +70,10 @@
   "upstream_commit": "277112633031228587af3525557b088659a4df4f",
   "files": {
     "system.md": "1366e1d24ef9c8fdffa65ccd84a76703a0683482248a1c8adece17684494b46c",
-    "roles/market.md": "248bf477f51ae5c74f45031ff4e4c51af99a6c24baa1a69b41ae2acf3ff6c401",
+    "roles/market.md": "8e4072e4197a7cd3b89c2c5863acc1b52ddbea2b87b62d4d026b81c610848299",
     "roles/flow.md": "b39877a51fd57b0dcebc2d83a62b3a75b187665666ea2308260b9d91277db47e",
     "roles/challenger.md": "a40b236b1ed4895764f4c206e76d08686c7625d14651679ae702b2a2f1f2ab30",
-    "roles/manager.md": "aaa29af02f2d45a5aa400b1cadd5ff559b17b55087bf2e75b6039d034a863fb3",
+    "roles/manager.md": "c94bc4b23c24a68737429b9281b65994e9960469febcfa04369bc7b228970afe",
     "skills/costs.md": "d9961d12ca8c3fdbfc2833ad4d39c94ad5363d02258b526d18826ea8498a07f2",
     "skills/portfolio.md": "9605562df0617ed0a1981d6d148c2d82f6a5ee31d56ff3db57871d0ef84b29cd",
     "skills/research.md": "f7d9d55be14066459b4fde739a98258d7b3e726fab21a5be30ed1692c79c5d85",

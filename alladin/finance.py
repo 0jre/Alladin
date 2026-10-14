@@ -33,6 +33,8 @@ def evidence_envelope(f,s,book,cfg,proposals,now,memory=()):
     portfolio=book.serialize()
     portfolio['closed']=portfolio['closed'][-20:]
     envelope=dict(schema_version='1.0',as_of=now,
+        decision_policy=dict(candidate_role='advisory',external_strategies_allowed=True,
+                             final_risk_approval_required=True),
         mandate=dict(chain=cfg.chain,market='spot',execution=cfg.execution,mint=s.mint,
                      sizing_mode=cfg.sizing_mode,confidence_is_win_probability=False),
         features=dict(f),snapshot={k:v for k,v in asdict(s).items() if k not in {

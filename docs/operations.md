@@ -277,3 +277,19 @@ Com posição aberta, paper_tick coleta também o mark quando não surgiu candle
 novo; stops, saídas por tempo e circuit breakers são processados nesse mark real.
 Isso depende de o consumidor/worker continuar chamando paper_tick e de dados
 válidos; não garante preço de stop nem disponibilidade contínua da fonte.
+
+## External strategy proposals (prompt bundle 2.1.0)
+
+`prepare_decision` delivers a task after valid feed/security checks even when the
+quantitative candidate list is empty or its suggestions fail economics. Candidates
+are advisory. The external session may HOLD or propose its own named spot strategy,
+with observed feature/snapshot references, entry conditions, invalidation, stop,
+target and horizon supported by those observations. Do not invent targets to pass
+risk. The backend cannot establish whether a cited hypothesis has predictive edge.
+
+`submit_decision` still requires four structured assessments, directional consensus,
+no veto/contrary report, and final deterministic approval of the actual proposal.
+Freshness, context hashes, idempotency, full-balance loss/exposure limits and costs
+remain enforced. No task auto-submits itself; `demo-live` alone only collects and
+exports tasks. The consuming session must inspect and submit them. A successful
+software roundtrip does not establish profitability or mandate an entry.

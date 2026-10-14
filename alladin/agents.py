@@ -114,11 +114,9 @@ class Council:
             audit['candidate_economics']=evidence['candidate_economics']
             held=any(pos.mint==s.mint and pos.market=='spot' for pos in book.positions)
             admissible=[row for row in evidence['candidate_economics'] if row['approval']['approved']]
-            if not held and not ideas:
-                return abstain('Sem sinal quantitativo; permanecer em caixa','signal_abstention')
-            if not held and not admissible:
-                audit['profile_feasibility']=profile_feasibility(cfg)
-                return abstain('Nenhum candidato aprovado por risco e custos','economic_abstention')
+            # Quantitative rules supply suggestions, not authority over external agents.
+            audit['baseline_status']=('signal_absent' if not ideas else
+                                      'admissible' if admissible else 'risk_rejected')
             allowed=set(evidence['evidence_registry'])
             if submission is None:
                 audit['task'] = dict(evidence=evidence,report_schema=deepcopy(REPORT_SCHEMA),
@@ -160,8 +158,6 @@ class Council:
                     raise DataError('Entrada sem stop obrigatório')
                 if not any(k.startswith('features.') for k in decision['evidence_keys']) or not any(k.startswith('snapshot.') for k in decision['evidence_keys']):
                     raise DataError('Entrada exige evidência de mercado fechado e snapshot')
-                if not any(p.action==x['action'] and p.market==x['market'] and p.strategy==x['strategy'] for x in admissible):
-                    raise DataError('Decisão de entrada sem candidato econômico aprovado')
                 contrary=[name for name,r in audit['reports'].items() if name!='manager' and r['stance'] in {'SHORT','CLOSE'}]
                 supports=sum(audit['reports'][name]['stance']=='LONG' and audit['reports'][name]['score']>=cfg.min_confidence for name in ['market','quality','flow'])
                 if vetoes or contrary or supports<2:

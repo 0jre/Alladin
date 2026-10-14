@@ -33,3 +33,5 @@ prova de rentabilidade ou sessão de negociação.
 - A inteligência pertence à sessão consumidora. Não adicionar clientes de inferência, credenciais de IA ou seleção de modelos. Modo external é o padrão; subagentes são coordenados pela sessão externa.
 
 - Não implementar RPC, acesso blockchain ou verificação on-chain. Campos antigos de snapshot servem apenas à leitura de histórico; snapshots Coinbase novos não atestam cluster, contas ou autoridades.
+
+- Em modo external, candidatos quantitativos são sugestões. Não impedir tarefas ou propostas externas só porque não há candidato interno aprovado. Exigir evidências, consenso e aprovação final determinística do plano submetido.
