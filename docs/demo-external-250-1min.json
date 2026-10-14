@@ -1,0 +1,50 @@
+{
+  "requested_window_seconds": 60,
+  "window_start_utc_epoch": 1791991398.337877,
+  "window_end_utc_epoch": 1791991458.337877,
+  "verified_at_utc_epoch": 1791991510.3215818,
+  "source_commit": "70377f78ee7b2956ec2668d45540babcd7a5c049",
+  "mode": "external",
+  "chain": "solana",
+  "execution": "paper",
+  "timeframe_seconds": 60,
+  "initial_usdc": 250,
+  "cash_usdc": 250,
+  "equity_usdc": 250,
+  "net_pnl_usdc": 0,
+  "costs_usdc": 0.0,
+  "closed_trades": 0,
+  "open_positions": [],
+  "bars_processed": 80,
+  "observations": [
+    {
+      "observed_at": 1791991398.337938,
+      "cycle": 0,
+      "tick": {
+        "bars": 80,
+        "last_bar": 1791991320,
+        "next_action": "aguardar pr\u00f3xima barra fechada; nenhum trade no aquecimento",
+        "result": "warmed_up"
+      }
+    },
+    {
+      "observed_at": 1791991413.9465208,
+      "cycle": 1,
+      "tick": {
+        "last_bar": 1791991320,
+        "result": "waiting_for_closed_bar"
+      },
+      "error": "ValueError: Ainda n\u00e3o h\u00e1 feed: envie barras fechadas e snapshot via ingest"
+    }
+  ],
+  "audit": {
+    "valid": true,
+    "count": 1,
+    "head": "5c21a9193dbfb3f57bddace968ad65787bb642896d03418fe653925888365369"
+  },
+  "result": "no_fills",
+  "diagnosis": "Warmup of 80 real Coinbase closed candles succeeded. The next collection returned waiting_for_closed_bar after the 60-second deadline. The harness then requested preparation without a snapshot and was rejected. No decision or fill occurred. This test did not validate trading execution; the deadline between calls did not bound an in-flight collection.",
+  "account_note": "New isolated demo account; existing demo ledgers were not reset or changed.",
+  "actual_runner_elapsed_seconds": 85.27036309242249,
+  "runner_error": "Harness attempted prepare_decision on waiting_for_closed_bar without an initial snapshot. This returned ValueError and made no portfolio mutation."
+}
