@@ -1,5 +1,7 @@
 """Bounded JSON HTTP transport. Never logs auth headers, URLs or response bodies."""
 import json
+import http.client
+import socket
 import queue
 import threading
 from contextlib import contextmanager
@@ -14,10 +16,18 @@ from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit, urlencode
 
 class DataError(RuntimeError):
-    def __init__(self, message, retry_after=None):
+    def __init__(self, message, retry_after=None,code=None,stage=None,source=None):
         super().__init__(message)
+        self.code,self.stage,self.source=code,stage,source
         self.retry_after = (min(86400.0,max(0.0,retry_after))
                             if type(retry_after) in (int,float) and math.isfinite(retry_after) else None)
+
+    def details(self):
+        return {key:value for key,value in [('code',self.code),('stage',self.stage),('source',self.source)] if value is not None}
+
+    def at_source(self,source):
+        self.source=source
+        return self
 
 # A socket timeout alone does not bound DNS, retries or a slowly streamed body.
 # Only read-only HTTP runs in these daemon threads; they never mutate a ledger.
@@ -28,7 +38,7 @@ _IO_SLOTS = threading.BoundedSemaphore(4)
 def check_deadline():
     end=_DEADLINE.get()
     if end is not None and time.monotonic()>=end:
-        raise DataError('Prazo total de coleta excedido; nenhuma operação aplicada')
+        raise DataError('Prazo total de coleta excedido; nenhuma operação aplicada',code='deadline_exceeded',stage='collection')
 
 
 @contextmanager
@@ -56,9 +66,11 @@ def _bounded_read(request,timeout):
         raise DataError('Capacidade de coleta esgotada dentro do prazo')
     remaining=_remaining_after_acquire()
     result=queue.Queue(maxsize=1)
+    trace={'stage':'connection'}
     def read():
         try:
-            with urllib.request.build_opener(NoRedirect()).open(request,timeout=min(timeout,remaining)) as response:
+            with urllib.request.build_opener(NoRedirect(),TracedHTTPSHandler(trace)).open(request,timeout=min(timeout,remaining)) as response:
+                trace['stage']='response_body'
                 raw=response.read(2_000_001)
             result.put((True,raw))
         except Exception as exc:
@@ -74,9 +86,13 @@ def _bounded_read(request,timeout):
     try:
         ok,value=result.get(timeout=_remaining())
     except queue.Empty:
-        raise DataError('Prazo total de coleta excedido; resposta tardia descartada') from None
+        raise DataError('Prazo total de coleta excedido; resposta tardia descartada',code='deadline_exceeded',stage=trace['stage']) from None
     check_deadline()
     if not ok:
+        if isinstance(value,(urllib.error.URLError,TimeoutError,OSError)) and not isinstance(value,urllib.error.HTTPError):
+            reason=value.reason if isinstance(value,urllib.error.URLError) else value
+            code='dns_failure' if isinstance(reason,socket.gaierror) else 'network_timeout' if isinstance(reason,TimeoutError) else 'network_failure'
+            raise NetworkDataError('Falha de rede na coleta; detalhes de acesso omitidos',code=code,stage=trace['stage']) from None
         raise value
     return value
 
@@ -89,9 +105,34 @@ def _remaining_after_acquire():
         raise
 
 
+class NetworkDataError(DataError):
+    pass
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         raise DataError('Redirect HTTP recusado')
+
+class TracedHTTPSHandler(urllib.request.HTTPSHandler):
+    """Record protocol phase only, never endpoint credentials, paths or bodies."""
+    def __init__(self,trace):
+        super().__init__()
+        self.trace=trace
+
+    def https_open(self,request):
+        trace=self.trace
+        class Connection(http.client.HTTPSConnection):
+            def connect(self):
+                trace['stage']='connection'
+                super().connect()
+                trace['stage']='response_headers'
+
+            def _tunnel(self):
+                trace['stage']='proxy_tunnel'
+                super()._tunnel()
+                trace['stage']='tls_handshake'
+        return self.do_open(Connection,request,context=self._context)
+
 
 class HTTP:
     def __init__(self, timeout=15, retries=2, retry_cap=8, sleeper=None, random_value=None):
@@ -141,6 +182,10 @@ class HTTP:
                 if len(raw) > 2_000_000:
                     raise DataError('Resposta excedeu limite de bytes')
                 return json.loads(raw,parse_constant=lambda _: (_ for _ in ()).throw(ValueError('Nonfinite JSON')))
+            except NetworkDataError:
+                if attempt==attempts-1:
+                    raise
+                self._pause(self._backoff(attempt))
             except urllib.error.HTTPError as e:
                 e.close()
                 if e.code in {429,503}:

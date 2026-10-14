@@ -330,6 +330,10 @@ class Service:
                     external_task=state.get('external_task'),
                     universe={k:v['status'] for k,v in state.get('universe',{}).items()},
                     blocked_mints=sorted(state.get('blocked_mints',{})))
+    def diagnostics(self):
+        from .diagnostics import diagnose
+        return diagnose(self.cfg)
+
     def performance(self):
         with self.store.connect() as db:
             db.execute('BEGIN')

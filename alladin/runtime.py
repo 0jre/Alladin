@@ -63,7 +63,8 @@ class PaperRunner:
                                     getattr(exc,'retry_after',None) or 0)
                         self._update(failures=failures,last_error=type(exc).__name__,retry_seconds=delay)
                         result = dict(result='provider_unavailable' if isinstance(exc,DataError) else 'session_blocked',
-                                      detail=str(exc)[:200],retry_seconds=delay,portfolio_unchanged=True)
+                                      detail=str(exc)[:200],retry_seconds=delay,portfolio_unchanged=True,
+                                      diagnostics=exc.details() if isinstance(exc,DataError) else {})
                     except Exception:
                         self._update(last_error='internal_error',failures=self.health()['failures']+1)
                         self.emit(dict(result='worker_failed',detail='internal_error'))

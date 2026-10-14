@@ -143,3 +143,29 @@ def approve(p,f,s,book,cfg,now,entry_price=None,instrument=None):
         return Approval(False,('reward_risk_after_fixed_costs',))
     return Approval(True,('risk_constraints_passed',),notional,leverage,
                     notional*(p.stop_fraction+cost_fraction)+2*cfg.fixed_cost_usdc)
+
+
+def profile_feasibility(cfg):
+    """Necessary-condition check for an initially flat account, not an entry signal."""
+    from .strategies import GROSS_REWARD_MULTIPLES
+    if cfg.sizing_mode!='available_balance':
+        return dict(checked=False,reason='risk_budget_sizes_per_trade')
+    cash=cfg.initial_usdc
+    entry_fraction=(cfg.fee_bps+cfg.slippage_bps)/10000
+    notional=max(0,cash-cfg.fixed_cost_usdc)/(1+entry_fraction)
+    if notional<=0:
+        return dict(checked=True,baseline_can_fit=False,reason='no_spendable_cash')
+    costs=2*entry_fraction+2*cfg.fixed_cost_usdc/notional
+    loss_budget=cash*min(cfg.risk_per_trade,cfg.max_open_risk,cfg.max_daily_loss,cfg.max_drawdown)
+    max_stop=min(.08,loss_budget/notional-costs)
+    rows={}
+    for name,multiple in GROSS_REWARD_MULTIPLES.items():
+        best_rr=(multiple*max_stop-costs)/(max_stop+costs) if max_stop>=.01 else None
+        rows[name]=dict(gross_reward_multiple=multiple,best_net_reward_risk=best_rr,
+                        can_fit=max_stop>=.01 and best_rr>=cfg.min_reward_risk)
+    return dict(checked=True,baseline_can_fit=any(row['can_fit'] for row in rows.values()),
+        sizing_mode=cfg.sizing_mode,initial_cash_usdc=cash,spendable_notional_usdc=notional,
+        loss_budget_usdc=loss_budget,max_stop_fraction=max_stop,roundtrip_cost_fraction=costs,
+        required_net_reward_risk=cfg.min_reward_risk,strategies=rows,
+        assumptions='Initially flat account, initial cash, unchanged modeled costs and current strategy targets. Necessary condition only; live risk still applies.',
+        resolution='Review strategy evidence and economic policy explicitly; do not inflate targets, reduce costs or widen loss limits to force a fill.')

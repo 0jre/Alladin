@@ -158,3 +158,44 @@ O aquecimento continua sem fill. Logo após ele, `prepare_decision` pode coletar
 primeiro snapshot atual e analisar as barras fechadas já carregadas. Não exige
 esperar outra barra nem misturar `ingest` e paper-live. `waiting_for_closed_bar`
 é um estado normal, não erro de feed ou sinal de negociação.
+
+## Diagnóstico antes de uma sessão
+
+```bash
+python -m alladin --config config.json doctor
+```
+
+O diagnóstico é somente leitura, retorna código de saída 0 quando suas condições
+necessárias passam e 2 quando há bloqueio. Também está em `GET /v1/diagnostics`
+(autenticado) e MCP `alladin_diagnostics`. Não grava feed, modifica saldo ou opera.
+`checks` verifica Coinbase e RPC separadamente; `sources_ready` não implica sinal
+nem aprovação de risco. Cada grupo tem até 15 segundos, até 30 no diagnóstico todo.
+
+Falhas expõem somente `code`, `stage` e `source` conhecidos. `proxy_tunnel`
+identifica falha na conexão CONNECT ao proxy, antes do TLS e da resposta da API.
+`dns_failure`, `connection`, `tls_handshake`, `response_headers` e `response_body`
+ajudam a distinguir rede de dados inválidos. Nunca são exibidos URLs com segredo,
+credenciais, cabeçalhos de autenticação ou corpos de erro do provedor.
+
+No ambiente Work usado em 2026-10-14, a conexão ao proxy local funcionou, CONNECT
+para chatgpt.com retornou 200, mas CONNECT para os hosts Coinbase/Solana expirou.
+O doctor também observou `proxy_tunnel` na coleta. Isso demonstra o ponto da falha
+neste ambiente; não demonstra indisponibilidade das APIs na internet. Os destinos
+necessários precisam estar autorizados no proxy/egress do ambiente que executa o
+backend. A lista de destinos deste ambiente não é configuração do Alladin.
+Não contornar regras de rede nem substituir o RPC por snapshots fabricados.
+
+`profile_feasibility` verifica uma condição necessária dos planos padrão em uma
+conta inicialmente sem posições. O perfil de saldo integral atual tem custos de
+ida e volta, risco de 2% e retorno/risco líquido mínimo de 1,8. Com os alvos padrão
+de 2,0–2,2 vezes o stop, esses requisitos não cabem juntos. O diagnóstico mostra o
+stop máximo e o melhor retorno/risco possível nesse cenário. Não aumenta stops,
+não reduz custos nem infla alvos para produzir uma entrada. O perfil e os limites
+permanecem intactos; a política/estratégia precisa de revisão explícita e evidência.
+
+O cliente HTTP público retorna agora o resultado do comando já desembrulhado,
+como MCP e Service.command; a resposta HTTP bruta continua `{ "result": ... }`.
+A integração controlada testa dados brutos de fonte → indicadores → contexto →
+submissão externa → risco → OPEN/CLOSE → saldo/auditoria em HTTP e MCP. Essas
+fixtures são sintéticas, usam perfil de pesquisa próprio e não validam desempenho
+nem operações com mercado atual no perfil integral do usuário.

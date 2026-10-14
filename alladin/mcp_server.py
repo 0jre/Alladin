@@ -27,6 +27,7 @@ def tools():
     optional = {}
     return [
         _tool('alladin_status', 'Carteira paper, posições, pendência e bloqueios. Não envia ordem.', {}),
+        _tool('alladin_diagnostics', 'Verifica acesso atual a Coinbase e RPC; informa fase da falha e não altera carteira.', {}),
         _tool('alladin_performance', 'Estatística de trades líquidos, incerteza e meta observada de 900 entradas. Não promete lucro.', {}),
         _tool('alladin_audit', 'Eventos recentes de decisão e execução.', {'limit': {'type': 'integer'}}),
         _tool('alladin_contract', 'Contrato de comandos do Alladin.', {}),
@@ -114,6 +115,8 @@ def _call(service, params):
     try:
         if name == 'alladin_status':
             result = service.status()
+        elif name == 'alladin_diagnostics':
+            result=service.diagnostics()
         elif name == 'alladin_performance':
             result = service.performance()
         elif name == 'alladin_audit':
@@ -128,7 +131,9 @@ def _call(service, params):
             key = args.pop('idempotency_key', None) or 'mcp-' + uuid.uuid4().hex
             result = execute(service, name, args, key)
         return {'content': [{'type': 'text', 'text': json.dumps(result, ensure_ascii=False, allow_nan=False)}], 'isError': False}
-    except (ValueError, KeyError, TypeError, DataError) as exc:
+    except DataError as exc:
+        return _error(json.dumps({'error':'provider_unavailable','message':str(exc)[:300],**exc.details()}))
+    except (ValueError, KeyError, TypeError) as exc:
         return _error(str(exc)[:300])
 
 

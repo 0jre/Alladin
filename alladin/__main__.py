@@ -38,6 +38,7 @@ def main():
     sub.add_parser('mcp')
     sub.add_parser('status'); sub.add_parser('contract')
     sub.add_parser('performance')
+    sub.add_parser('doctor')
     exp = sub.add_parser('export'); exp.add_argument('--output',default='results')
     sub.add_parser('halt')
     val=sub.add_parser('validate'); val.add_argument('--feed',required=True); val.add_argument('--output',default='results/validation');val.add_argument('--folds',type=int,default=3)
@@ -56,6 +57,11 @@ def main():
             result = BackendClient(args.url).command(d['command'],d['args'],args.key)
         else:
             cfg = Config.load(args.config)
+            if args.command=='doctor':
+                from .diagnostics import diagnose
+                report=diagnose(cfg)
+                print(json.dumps(report,indent=2,allow_nan=False),flush=True)
+                return 0 if report['ready'] else 2
             if args.command == 'validate':
                 if args.agents != 'rules':
                     raise ValueError('Validação por folds nesta versão aceita rules; sessões externas exigem agente conectado')

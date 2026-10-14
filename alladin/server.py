@@ -14,6 +14,7 @@ from .prompts import PromptLibrary
 CONTRACT = {
     'version':'0.6','venue':'coinbase_advanced','chain':'solana','execution':'paper',
     'endpoints':{'GET /health':'process health; no portfolio data',
+                 'GET /v1/diagnostics':'read-only Coinbase/RPC checks with failure phase; no ledger mutation',
                  'GET /v1/status':'persistent portfolio state',
                  'GET /v1/performance':'closed-trade statistics, uncertainty and 900-entry research target; no profit guarantee',
                  'GET /v1/prompts':'reviewed finance prompt-pack metadata',
@@ -91,6 +92,8 @@ def build_server(service,port=8080,token=None,runner=None):
             try:
                 if parsed.path == '/v1/status':
                     result = service.status()
+                elif parsed.path == '/v1/diagnostics':
+                    result=service.diagnostics()
                 elif parsed.path == '/v1/performance':
                     result = service.performance()
                 elif parsed.path == '/v1/prompts':
@@ -153,7 +156,7 @@ def build_server(service,port=8080,token=None,runner=None):
             except (ValueError,TypeError,KeyError) as e:
                 self.send_json(400,{'error':'invalid_request','detail':str(e)[:200]})
             except DataError as e:
-                body={'error':'provider_unavailable','detail':str(e)[:200]}
+                body={'error':'provider_unavailable','detail':str(e)[:200],**e.details()}
                 if getattr(e,'retry_after',None) is not None:
                     body['retry_after_seconds']=e.retry_after
                 self.send_json(503,body,retry_after=getattr(e,'retry_after',None))

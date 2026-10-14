@@ -38,7 +38,7 @@ def run_demo(service,seconds=60,poll_seconds=5,output='results/demo-live',emit=N
                         row['preparation']=service.command('prepare_decision',{},f'demo-{run_id}-{len(observations)}-prepare')
                         (root/'decision-task.json').write_text(json.dumps(row['preparation'],indent=2))
         except (DataError,ValueError) as exc:
-            row['error']={'type':type(exc).__name__,'message':str(exc)}
+            row['error']={'type':type(exc).__name__,'message':str(exc),**(exc.details() if isinstance(exc,DataError) else {})}
         row['completed_elapsed_seconds']=time.monotonic()-begin
         observations.append(row)
         with (root/'observations.jsonl').open('a') as stream:

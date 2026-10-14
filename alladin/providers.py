@@ -21,8 +21,11 @@ class SolanaRPC:
     def call(self, method, params=None):
         if method not in self.ALLOWED:
             raise DataError("Método RPC não permitido")
-        data = self.http.json(self.url, {"jsonrpc": "2.0", "id": 1, "method": method,
-                                        "params": params or []})
+        try:
+            data = self.http.json(self.url, {"jsonrpc": "2.0", "id": 1, "method": method,
+                                            "params": params or []})
+        except DataError as exc:
+            raise exc.at_source('solana_'+method) from None
         if not isinstance(data, dict) or data.get("error") or "result" not in data:
             raise DataError(f"RPC {method} falhou; detalhes omitidos")
         return data["result"]
@@ -82,7 +85,11 @@ class CoinbaseMarket:
         url = f"{self.BASE}/{path}"
         if params:
             url += "?" + urlencode(params)
-        return self.http.json(url, headers={"Cache-Control": "no-cache"})
+        try:
+            return self.http.json(url, headers={"Cache-Control": "no-cache"})
+        except DataError as exc:
+            kind='candles' if path.endswith('/candles') else 'ticker' if path.endswith('/ticker') else 'book' if path=='product_book' else 'statistics'
+            raise exc.at_source('coinbase_'+kind) from None
 
     def candles(self, mint=SOL, count=120, aggregate=900, now=None):
         if pubkey(mint) != SOL:

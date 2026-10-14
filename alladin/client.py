@@ -28,4 +28,7 @@ class BackendClient:
     def performance(self):
         return self._request('/v1/performance')
     def command(self,name,args,key):
-        return self._request('/v1/commands',{'command':name,'args':args},key)
+        response=self._request('/v1/commands',{'command':name,'args':args},key)
+        if not isinstance(response,dict) or set(response)!={'result'} or not isinstance(response['result'],dict):
+            raise ValueError('Resposta de comando do backend inválida')
+        return response['result']

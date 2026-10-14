@@ -3,7 +3,7 @@ from copy import deepcopy
 from dataclasses import asdict
 from .models import Proposal, finite
 from .strategies import candidates
-from .risk import security_checks,approve
+from .risk import security_checks,approve,profile_feasibility
 from .transport import DataError
 from .prompts import PromptLibrary
 from .finance import evidence_envelope
@@ -115,6 +115,7 @@ class Council:
             held=any(pos.mint==s.mint and pos.market=='spot' for pos in book.positions)
             admissible=[row for row in evidence['candidate_economics'] if row['approval']['approved']]
             if not held and not admissible:
+                audit['profile_feasibility']=profile_feasibility(cfg)
                 return abstain('Nenhum candidato aprovado por risco e custos','economic_abstention')
             allowed=set(evidence['evidence_registry'])
             if submission is None:

@@ -106,3 +106,9 @@ Para observar uma janela limitada, use `demo-live --seconds 60 --output results/
 O orçamento de coleta cobre DNS, leitura e retries; os comandos de mercado têm
 limite total de 15 segundos e a demonstração também respeita o tempo restante da
 janela. A sessão externa continua responsável por analisar e submeter decisões.
+
+Antes de repetir uma sessão bloqueada, rode `python -m alladin doctor` ou chame
+`alladin_diagnostics` via MCP. O resultado separa disponibilidade das fontes,
+fase de rede e compatibilidade econômica dos planos padrão. `proxy_tunnel`
+indica falha anterior à resposta da API, que exige verificar o acesso do ambiente
+aos hosts públicos. Limites de risco não são relaxados para produzir negociações.
