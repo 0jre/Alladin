@@ -1,5 +1,9 @@
 """Bounded JSON HTTP transport. Never logs auth headers, URLs or response bodies."""
 import json
+import queue
+import threading
+from contextlib import contextmanager
+from contextvars import ContextVar
 import math
 import random
 import time
@@ -14,6 +18,76 @@ class DataError(RuntimeError):
         super().__init__(message)
         self.retry_after = (min(86400.0,max(0.0,retry_after))
                             if type(retry_after) in (int,float) and math.isfinite(retry_after) else None)
+
+# A socket timeout alone does not bound DNS, retries or a slowly streamed body.
+# Only read-only HTTP runs in these daemon threads; they never mutate a ledger.
+_DEADLINE = ContextVar('alladin_io_deadline',default=None)
+_IO_SLOTS = threading.BoundedSemaphore(4)
+
+
+def check_deadline():
+    end=_DEADLINE.get()
+    if end is not None and time.monotonic()>=end:
+        raise DataError('Prazo total de coleta excedido; nenhuma operação aplicada')
+
+
+@contextmanager
+def deadline(seconds):
+    if type(seconds) not in (int,float) or not math.isfinite(seconds) or seconds<=0:
+        raise ValueError('Prazo precisa ser positivo e finito')
+    end=time.monotonic()+seconds
+    parent=_DEADLINE.get()
+    token=_DEADLINE.set(min(end,parent) if parent is not None else end)
+    try:
+        check_deadline()
+        yield
+    finally:
+        _DEADLINE.reset(token)
+
+
+def _remaining():
+    check_deadline()
+    return _DEADLINE.get()-time.monotonic()
+
+
+def _bounded_read(request,timeout):
+    remaining=_remaining()
+    if not _IO_SLOTS.acquire(timeout=remaining):
+        raise DataError('Capacidade de coleta esgotada dentro do prazo')
+    remaining=_remaining_after_acquire()
+    result=queue.Queue(maxsize=1)
+    def read():
+        try:
+            with urllib.request.build_opener(NoRedirect()).open(request,timeout=min(timeout,remaining)) as response:
+                raw=response.read(2_000_001)
+            result.put((True,raw))
+        except Exception as exc:
+            result.put((False,exc))
+        finally:
+            _IO_SLOTS.release()
+    thread=threading.Thread(target=read,daemon=True,name='alladin-read-only-http')
+    try:
+        thread.start()
+    except BaseException:
+        _IO_SLOTS.release()
+        raise
+    try:
+        ok,value=result.get(timeout=_remaining())
+    except queue.Empty:
+        raise DataError('Prazo total de coleta excedido; resposta tardia descartada') from None
+    check_deadline()
+    if not ok:
+        raise value
+    return value
+
+
+def _remaining_after_acquire():
+    try:
+        return _remaining()
+    except BaseException:
+        _IO_SLOTS.release()
+        raise
+
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
@@ -50,11 +124,20 @@ class HTTP:
         return self._read(request, retry)
 
     def _read(self, request, retry):
+        with deadline(self.timeout):
+            return self._read_with_deadline(request,retry)
+
+    def _pause(self,seconds):
+        if seconds>=_remaining():
+            raise DataError('Retry excederia prazo total de coleta',retry_after=seconds)
+        self._sleep(seconds)
+        check_deadline()
+
+    def _read_with_deadline(self, request, retry):
         attempts = self.retries+1 if retry else 1
         for attempt in range(attempts):
             try:
-                with urllib.request.build_opener(NoRedirect()).open(request,timeout=self.timeout) as r:
-                    raw = r.read(2_000_001)
+                raw = _bounded_read(request,self.timeout)
                 if len(raw) > 2_000_000:
                     raise DataError('Resposta excedeu limite de bytes')
                 return json.loads(raw,parse_constant=lambda _: (_ for _ in ()).throw(ValueError('Nonfinite JSON')))
@@ -70,17 +153,17 @@ class HTTP:
                                          retry_after=retry_after) from None
                     delay = (retry_after + self._random() * .25 if retry_after is not None
                              else self._backoff(attempt))
-                    self._sleep(delay)
+                    self._pause(delay)
                     continue
                 if e.code not in {500,502,503,504}:
                     raise DataError(f'HTTP {e.code}; conteúdo omitido') from None
                 if attempt == attempts-1:
                     raise DataError('Fonte de dados temporariamente indisponível') from None
-                self._sleep(self._backoff(attempt))
+                self._pause(self._backoff(attempt))
             except (urllib.error.URLError, TimeoutError, OSError):
                 if attempt == attempts-1:
                     raise DataError('Falha de rede/timeout; endpoint omitido') from None
-                self._sleep(self._backoff(attempt))
+                self._pause(self._backoff(attempt))
             except (json.JSONDecodeError,ValueError,UnicodeError):
                 raise DataError('JSON inválido') from None
 

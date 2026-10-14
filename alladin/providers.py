@@ -74,6 +74,7 @@ class CoinbaseMarket:
         self.http = http or HTTP(timeout=8, retries=2)
         self.product_id = product_id or "SOL-USDC"
         self._volume_cache = None
+        self._candles_cache = None
         if self.product_id not in self.PRODUCT_IDS:
             raise ValueError("Somente o produto Coinbase SOL-USDC é permitido")
 
@@ -93,6 +94,9 @@ class CoinbaseMarket:
         step = aggregate
         cutoff = int(time.time() if now is None else now)
         end = cutoff // step * step
+        cache_key=(mint,count,aggregate,end)
+        if self._candles_cache is not None and self._candles_cache[0]==cache_key:
+            return list(self._candles_cache[1])
         start = end - (count + 2) * step
         data = self._get(f"products/{quote(self.product_id, safe='')}/candles", {
             "start": start, "end": end, "granularity": self.GRANULARITIES[aggregate],
@@ -122,6 +126,8 @@ class CoinbaseMarket:
             raise DataError("Coinbase ainda não retornou candles fechados")
         if any(b.timestamp != a.timestamp + step for a, b in zip(rows, rows[1:])):
             raise DataError("Coinbase candles contêm lacunas; replay recusado")
+        if rows[-1].timestamp+step==end:
+            self._candles_cache=(cache_key,tuple(rows))
         return rows
 
     def market(self, mint=SOL, candles=None, timeframe_seconds=900):

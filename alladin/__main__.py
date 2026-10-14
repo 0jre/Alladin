@@ -33,6 +33,8 @@ def main():
     paper_live = sub.add_parser('paper-live'); paper_live.add_argument('--poll-seconds',type=int,default=30)
     paper_live.add_argument('--cycles',type=int,default=None)
     sub.add_parser('paper-tick')
+    demo_live=sub.add_parser('demo-live');demo_live.add_argument('--seconds',type=int,default=60)
+    demo_live.add_argument('--poll-seconds',type=int,default=5);demo_live.add_argument('--output',default='results/demo-live')
     sub.add_parser('mcp')
     sub.add_parser('status'); sub.add_parser('contract')
     sub.add_parser('performance')
@@ -61,6 +63,13 @@ def main():
                 print(json.dumps(result,indent=2,ensure_ascii=False,allow_nan=False))
                 return 0
             service = Service(cfg,args.db,args.agents)
+            if args.command == 'demo-live':
+                from .demo import run_demo
+                result=run_demo(service,args.seconds,args.poll_seconds,args.output,
+                    emit=lambda row:print(json.dumps(row,allow_nan=False),flush=True))
+                print(json.dumps({'report':args.output+'/report.json','collection_elapsed_seconds':result['collection_elapsed_seconds'],
+                    'equity_usdc':result['final_status']['equity_usdc'],'audit_valid':result['audit']['valid']}),flush=True)
+                return 0
             if args.command == 'mcp':
                 return serve_mcp(service)
             if args.command == 'paper-tick':

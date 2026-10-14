@@ -101,3 +101,8 @@ python3 -m alladin contract
 ```
 
 O servidor usa SQLite WAL e uma cadeia de hash para auditoria. O HTTP da biblioteca padrão deve permanecer atrás de uma camada TLS/autenticação/limite de tráfego para acesso remoto. Os eventos ainda exigem backups e retenção operacional.
+
+Para observar uma janela limitada, use `demo-live --seconds 60 --output results/demo`.
+O orçamento de coleta cobre DNS, leitura e retries; os comandos de mercado têm
+limite total de 15 segundos e a demonstração também respeita o tempo restante da
+janela. A sessão externa continua responsável por analisar e submeter decisões.

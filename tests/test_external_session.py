@@ -98,6 +98,15 @@ class ExternalSessionTests(unittest.TestCase):
         fresh=replace(self.s,source='coinbase_advanced_sol_spot')
         return patch('alladin.engine.collect',return_value=fresh)
 
+    def test_first_prepare_uses_collected_snapshot_after_warmup(self):
+        with self.service.store.transaction() as db:
+            state=self.service._load(db);state['snapshot']=None;state['input_mode']='paper_live'
+            self.service.store.save(db,state)
+        with patch('alladin.engine.collect',return_value=replace(self.s,source='coinbase_advanced_sol_spot')):
+            task=self.prepare()
+        self.assertEqual(task['status'],'prepared')
+        self.assertEqual(task['evidence']['snapshot']['source'],'coinbase_advanced_sol_spot')
+
     def test_live_refresh_executes_once_and_records_session(self):
         with self.live() as collect:
             task=self.prepare();args=self.submission(task)
@@ -108,6 +117,23 @@ class ExternalSessionTests(unittest.TestCase):
             self.assertEqual(len(result['events']),1,result)
             self.assertEqual(result['events'][0]['decision_context']['session_id'],'chat-session-fixture')
             self.assertEqual(len(self.service.status()['positions']),1)
+
+    def test_live_external_open_close_roundtrip_accounts_for_costs(self):
+        with self.live():
+            first=self.prepare()
+            opened=self.service.command('submit_decision',self.submission(first),'roundtrip-open')
+            self.assertEqual(opened['events'][0]['event'],'OPEN')
+            second=self.service.command('prepare_decision',{},'roundtrip-next')['task']
+            args=self.submission(second)
+            args['decision']['action']='CLOSE'
+            closed=self.service.command('submit_decision',args,'roundtrip-close')
+        self.assertEqual(closed['events'][0]['event'],'CLOSE')
+        status=self.service.status()
+        self.assertEqual(status['positions'],[])
+        self.assertEqual(status['closed_trades'],1)
+        self.assertGreater(status['costs_usdc'],0)
+        self.assertLess(status['cash_usdc'],250)
+        self.assertTrue(self.service.store.verify_audit()['valid'])
 
     def test_live_changed_price_rejects_instead_of_filling_stale_context(self):
         with self.live():task=self.prepare()

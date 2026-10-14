@@ -87,3 +87,10 @@ Bancos persistidos preservam seu modo e saldo. Reabra bancos `rules` com
 com inferência embutida exige transferência auditada para uma sessão externa,
 conservando custos, perdas e limites consumidos; não há migração automática.
 Todas as operações continuam spot paper, exclusivamente Solana.
+
+Após `warmed_up`, já é permitido chamar `prepare_decision`: o comando coleta o
+primeiro snapshot verificado antes de verificar a disponibilidade do contexto.
+`waiting_for_closed_bar` também não impede essa preparação. Uma preparação sem
+candidato viável retorna `abstained`, conserva o snapshot coletado e registra o
+motivo. Comandos de coleta compartilham um prazo total de 15 segundos; consumidores
+podem repetir falhas transitórias com a mesma chave, sem usar dados fabricados.

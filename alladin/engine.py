@@ -11,7 +11,7 @@ from .broker import PaperBroker
 from .storage import Store, canonical
 from .universe import seed_primary, classify_snapshot
 from .providers import CoinbaseMarket, collect
-from .transport import DataError
+from .transport import DataError,deadline,check_deadline
 from .evaluation import assess_trades
 from .external import context_hash
 import uuid
@@ -69,7 +69,11 @@ class Service:
         _,audit=self._decide(state,f,s,book,now)
         task=audit.pop('task',None)
         if task is None:
-            return dict(result='abstained',council=audit)
+            state['external_task']=None
+            self.store.save(db,state)
+            result=dict(result='abstained',council=audit)
+            self.store.event(db,int(time.time()),'prepare_decision',result)
+            return result
         created=int(time.time())
         if state.get('input_mode')=='paper_live' and not -5<=created-s.timestamp<=min(30,self.cfg.max_snapshot_age_seconds):
             raise DataError('Cotação expirou; colete novo contexto antes de preparar')
@@ -353,6 +357,13 @@ class Service:
         result['audit_verification_endpoint']='/v1/audit/verify'
         return result
     def command(self,name,args,key):
+        if name in {'paper_tick','prepare_decision','submit_decision'}:
+            with deadline(15):
+                return self._bounded_command(name,args,key)
+        return self._bounded_command(name,args,key)
+
+    def _bounded_command(self,name,args,key):
+        check_deadline()
         if name == 'paper_tick':
             with self.command_lock:
                 return self._serialized_command(name,args,key)
@@ -373,6 +384,8 @@ class Service:
                 mode = 'paper_live' if name == 'paper_tick' else 'replay'
                 if state.get('input_mode') not in (None,mode):
                     raise ValueError('Não misture paper-live e replay no mesmo banco')
+        if name=='prepare_decision' and (args or self.council.mode!='external'):
+            raise ValueError('prepare_decision exige modo external e nenhum argumento')
         paper_data = self._collect_paper_data(args) if name == 'paper_tick' else None
         if name in {'prepare_decision','submit_decision'} and state.get('input_mode')=='paper_live':
             # Reasoning runs in the caller's session. Refresh execution observations
@@ -383,7 +396,9 @@ class Service:
             candles=[Candle(**row) for row in state['history']]
             paper_data={'snapshot':collect(self.cfg.mint,market=lambda:provider.market(
                 self.cfg.mint,candles=candles,timeframe_seconds=self.cfg.timeframe_seconds))}
+        check_deadline()
         with self.store.transaction() as db:
+            check_deadline()
             return self.store.once(db,key,dict(command=name,args=args),
                                    lambda:self._command(db,name,args,paper_data))
     def _collect_paper_data(self,args):
@@ -444,7 +459,7 @@ class Service:
                                   bars=len(history),last_timestamp=history[-1].timestamp,
                                   last_price=history[-1].close))
                 return dict(result='warmed_up',bars=len(history),last_bar=history[-1].timestamp,
-                            next_action='aguardar próxima barra fechada; nenhum trade no aquecimento')
+                            next_action='prepare_decision pode coletar snapshot atual; nenhum trade no aquecimento')
             next_ts = state['last_timestamp']+step
             bar = next((b for b in candles if b.timestamp == next_ts),None)
             if bar is None:
@@ -589,6 +604,11 @@ class Service:
             self.store.save(db,state)
             self.store.event(db,int(time.time()),'finalize',{'events':events})
             return dict(result='finalized',events=events,equity_usdc=book.cash)
+        if name=='prepare_decision' and paper_data is not None:
+            fresh=paper_data.get('snapshot')
+            if fresh is not None:
+                state['snapshot']=asdict(fresh)
+                state['last_price']=fresh.price
         if not state['history'] or not state['snapshot']:
             raise ValueError('Ainda não há feed: envie barras fechadas e snapshot via ingest')
         f = features([Candle(**x) for x in state['history']])

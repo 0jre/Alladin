@@ -125,3 +125,36 @@ Os testes de fixtures exercitam entradas, saídas, custos, gaps e reinícios.
 O teste de mercado ao vivo mede a integração e pode terminar em HOLD; nenhum
 dos dois mede lucro futuro. A disponibilização 24/7 depende de instalar e manter
 este serviço em um host persistente.
+
+## Prazos de coleta e demonstração
+
+Cada comando `paper_tick`, `prepare_decision` e `submit_decision` compartilha um
+prazo monotônico de 15 segundos entre todas as chamadas HTTP, retries e espera
+por capacidade. Cada requisição também tem seu prazo total, além do timeout do
+socket. DNS ou leitura lenta não mantêm a chamada do backend bloqueada além do
+orçamento: a resposta tardia é descartada e nunca aplica uma operação na carteira.
+
+A biblioteca limita a quatro leituras HTTP concorrentes por processo. Uma leitura
+que o sistema operacional ainda não encerrou ocupa uma dessas vagas até sair;
+não são criadas threads ilimitadas. Se todas as vagas estiverem ocupadas, a coleta
+falha dentro do prazo. Isso não promete disponibilidade de Coinbase/RPC.
+
+Uma demonstração usa a mesma camada de orçamento, limitada também pelo tempo
+restante da janela inteira:
+
+```bash
+python -m alladin --config config.json --db data/demo-nova.sqlite demo-live --seconds 60 --poll-seconds 5 --output results/demo-nova
+```
+
+O comando preserva saldo e histórico se o banco já existir; use um caminho novo
+para uma conta demo independente. Não modifica o timeframe da configuração.
+`report.json` inclui tempo solicitado, tempo de coleta observado, erros, saldo e
+auditoria. A gravação final do relatório acontece depois da janela de coleta.
+`decision-task.json` disponibiliza a tarefa à sessão consumidora; ela ainda deve
+raciocinar e chamar `submit_decision`. A demonstração nunca fabrica pareceres ou
+ordens para produzir um trade obrigatório.
+
+O aquecimento continua sem fill. Logo após ele, `prepare_decision` pode coletar o
+primeiro snapshot atual e analisar as barras fechadas já carregadas. Não exige
+esperar outra barra nem misturar `ingest` e paper-live. `waiting_for_closed_bar`
+é um estado normal, não erro de feed ou sinal de negociação.
