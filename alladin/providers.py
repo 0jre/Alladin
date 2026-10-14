@@ -1,69 +1,13 @@
-"""Read-only Coinbase market data plus read-only Solana account checks.
+"""Coinbase-only public market data.
 
 Paper mode never builds, signs, or submits a wallet transaction.
 """
-import os
 import math
 import time
 from urllib.parse import quote, urlencode
 
-from .models import Candle, Snapshot, SOL, TOKEN_PROGRAM, MAINNET_GENESIS, pubkey, utc_timestamp
+from .models import Candle, Snapshot, SOL, pubkey, utc_timestamp
 from .transport import HTTP, DataError
-
-
-class SolanaRPC:
-    ALLOWED = {"getGenesisHash", "getAccountInfo", "getTokenSupply", "getTokenLargestAccounts"}
-
-    def __init__(self, http=None, url=None):
-        self.http = http or HTTP(timeout=8, retries=2)
-        self.url = url or os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
-
-    def call(self, method, params=None):
-        if method not in self.ALLOWED:
-            raise DataError("Método RPC não permitido")
-        try:
-            data = self.http.json(self.url, {"jsonrpc": "2.0", "id": 1, "method": method,
-                                            "params": params or []})
-        except DataError as exc:
-            raise exc.at_source('solana_'+method) from None
-        if not isinstance(data, dict) or data.get("error") or "result" not in data:
-            raise DataError(f"RPC {method} falhou; detalhes omitidos")
-        return data["result"]
-
-    def inspect(self, mint=SOL):
-        pubkey(mint)
-        if self.call("getGenesisHash") != MAINNET_GENESIS:
-            raise DataError("RPC não pertence à Solana mainnet")
-        account = self.call("getAccountInfo", [mint, {"encoding": "jsonParsed", "commitment": "finalized"}])
-        value = account.get("value") if isinstance(account,dict) else None
-        if not isinstance(value, dict) or value.get("owner") != TOKEN_PROGRAM:
-            raise DataError("Somente mint SPL clássico é suportado; Token-2022 recusado")
-        data = value.get('data')
-        parsed = data.get('parsed') if isinstance(data,dict) else None
-        if not isinstance(parsed,dict) or not isinstance(parsed.get('info'),dict):
-            raise DataError('Resposta RPC de mint inválida')
-        info = parsed['info']
-        if parsed.get("type") != "mint" or info.get("isInitialized") is not True:
-            raise DataError("Conta não é um mint inicializado")
-        if "mintAuthority" not in info or "freezeAuthority" not in info:
-            raise DataError("Autoridades não informadas")
-        if mint == SOL:
-            # Concentration of wrapped SOL holders is not a useful mint safety signal.
-            share = None
-        else:
-            supply = self.call("getTokenSupply", [mint, {"commitment": "finalized"}])
-            largest = self.call("getTokenLargestAccounts", [mint, {"commitment": "finalized"}])
-            total = int(supply["value"]["amount"])
-            share = None if total == 0 else min(
-                1, sum(int(row["amount"]) for row in largest["value"][:10]) / total)
-        context = account.get('context')
-        if not isinstance(context,dict) or type(context.get('slot')) is not int or context['slot']<0:
-            raise DataError('Slot RPC inválido')
-        return dict(mint=mint, token_program=value["owner"],
-                    mint_authority=info["mintAuthority"], freeze_authority=info["freezeAuthority"],
-                    top10_account_share=share, account_checked=True, cluster_verified=True,
-                    slot=context['slot'],
-                    warnings=["RPC público e contas SPL; não classifica contas de pool/custódia."])
 
 
 class CoinbaseMarket:
@@ -224,21 +168,22 @@ class CoinbaseMarket:
         return depth
 
 
-def collect(mint=SOL, rpc=None, market=None):
-    r = (rpc or SolanaRPC()).inspect(mint)
+def collect(mint=SOL, market=None):
+    """Coinbase-only observation. Never assert on-chain verification."""
+    if pubkey(mint)!=SOL:
+        raise DataError('Coinbase feed aceita somente SOL-USDC')
     if callable(market):
-        market = market()
-    if not market:
-        raise DataError("Dados atuais da Coinbase são obrigatórios")
-    observed_at = market.get('observed_at',int(time.time()))
-    if not -5 <= time.time()-observed_at <= 30:
+        market=market()
+    if not isinstance(market,dict) or not market:
+        raise DataError('Dados atuais da Coinbase são obrigatórios')
+    if market.get('product_id')!='SOL-USDC' or market.get('source')!='coinbase_advanced_sol_spot':
+        raise DataError('Produto/origem Coinbase inválidos')
+    observed_at=market.get('observed_at')
+    if type(observed_at) is not int or not -5<=time.time()-observed_at<=30:
         raise DataError('Cotação Coinbase expirada; ciclo bloqueado')
-    return Snapshot(timestamp=observed_at, mint=mint, price=market["price"],
-                    liquidity_usd=market["liquidity_usd"], volume_24h_usd=market["volume_24h_usd"],
-                    buy_sell_imbalance=market["buy_sell_imbalance"],
-                    mint_authority=r["mint_authority"], freeze_authority=r["freeze_authority"],
-                    top10_account_share=r["top10_account_share"], token_program=r["token_program"],
-                    account_checked=True, cluster_verified=True, source=market["source"], slot=r["slot"],
-                    warnings=tuple(r["warnings"] + [
-                        "Mercado, preço, livro e trades vêm da Coinbase; segurança do mint vem de RPC Solana.",
-                        "Paper fills usam o midpoint Coinbase mais custos configurados; não são ordens ou cotação executável."]))
+    return Snapshot(timestamp=observed_at,mint=mint,price=market['price'],
+                    product_id=market['product_id'],source=market['source'],
+                    liquidity_usd=market['liquidity_usd'],volume_24h_usd=market['volume_24h_usd'],
+                    buy_sell_imbalance=market['buy_sell_imbalance'],
+                    warnings=('Dados exclusivos da Coinbase; nenhuma verificação on-chain foi realizada.',
+                              'Fills paper usam midpoint mais custos; nenhuma ordem é enviada.'))

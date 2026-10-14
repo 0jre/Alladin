@@ -1,9 +1,9 @@
 # Alladin — notas de desenvolvimento
 
 Backend Python sem UI, só biblioteca padrão (Python 3.11+). Não adicionar dependências.
-Alladin roda exclusivamente na Solana mainnet e em spot paper. Não conecta carteiras,
+Alladin usa exclusivamente a Coinbase para SOL-USDC spot paper; o rótulo Solana identifica o ativo, não uma conexão à blockchain. Não conecta carteiras,
 não guarda chaves, não assina nem envia transações. O ciclo paper-live consome candles,
-livro, trades e estatísticas públicas da Coinbase, mais RPC Solana somente leitura; falha de dado bloqueia
+livro, trades e estatísticas públicas da Coinbase; falha de dado bloqueia
 novos ciclos e fills. Replay sintético serve apenas para testes do motor, nunca como
 prova de rentabilidade ou sessão de negociação.
 
@@ -19,7 +19,7 @@ prova de rentabilidade ou sessão de negociação.
 - WAL com `synchronous=NORMAL`: atômico e consistente em crash de processo; perda do último commit só em queda de SO/energia — tolerada pelo modelo de repetição idempotente.
 - Decisão na barra N executa na abertura de N+1 revalidando o snapshot anterior. Nunca fabricar preço de um mint sem barra.
 - Nenhuma ordem externa é permitida neste projeto. Configuração precisa ser `chain=solana`, `execution=paper` e `allowed_markets=["spot"]`.
-- No fluxo paper-live, RPC precede o último livro Coinbase; cotação com mais de 30 segundos não autoriza entrada. Candle anterior à abertura de uma posição não pode disparar stop retroativo.
+- No fluxo paper-live, somente a Coinbase fornece os dados; cotação com mais de 30 segundos não autoriza entrada. Candle anterior à abertura de uma posição não pode disparar stop retroativo.
 - Gaps com posição fecham somente ao mark atual verificado e acionam halt persistente. Nunca preencher stop em preço histórico presumido.
 - Idempotência é consultada antes da coleta. Worker único por banco, polling contado após conclusão, saúde de processo distinta da prontidão do feed.
 - Mints não-âncora entram pelo funil `admit` → `watch`; replay/validate fazem isso automaticamente no primeiro snapshot de cada mint.
@@ -31,3 +31,5 @@ prova de rentabilidade ou sessão de negociação.
 - Fixtures e propostas controladas não medem taxa de acerto de estratégia; avaliar PnL líquido, amostra, perdas e incerteza. Não prometer 900 operações vencedoras.
 
 - A inteligência pertence à sessão consumidora. Não adicionar clientes de inferência, credenciais de IA ou seleção de modelos. Modo external é o padrão; subagentes são coordenados pela sessão externa.
+
+- Não implementar RPC, acesso blockchain ou verificação on-chain. Campos antigos de snapshot servem apenas à leitura de histórico; snapshots Coinbase novos não atestam cluster, contas ou autoridades.

@@ -29,12 +29,8 @@ class PipelineTests(unittest.TestCase):
         self.last_decision=None
 
     def source_json(self,url,payload=None,**kwargs):
-        if payload is not None:
-            if payload['method']=='getGenesisHash':return {'result':MAINNET_GENESIS}
-            if payload['method']=='getAccountInfo':return {'result':{'context':{'slot':123},'value':{
-                'owner':TOKEN_PROGRAM,'data':{'parsed':{'type':'mint','info':{
-                    'isInitialized':True,'mintAuthority':None,'freezeAuthority':None}}}}}}
-            raise AssertionError('Unexpected RPC method')
+        self.assertIsNone(payload,'No RPC POST is permitted')
+        self.assertEqual(urlsplit(url).hostname,'api.coinbase.com')
         parsed=urlsplit(url);query=parse_qs(parsed.query)
         if parsed.path.endswith('/candles'):
             hour=query['granularity'][0]=='ONE_HOUR';step=3600 if hour else 60;count=26 if hour else 80
@@ -61,7 +57,7 @@ class PipelineTests(unittest.TestCase):
             evidence_keys=['features.ema_gap','snapshot.price'],concerns=[],missing_data=[],
             invalidation='Offline fixture changes',risk_flags=[],blocking=False,score_is_probability=False)
         return dict(task_id=task['id'],evidence_sha256=task['evidence_sha256'],session_id='OFFLINE_CONTRACT_FIXTURE',
-                    reports={name:dict(report) for name in ('market','onchain','flow','challenger')},decision=decision)
+                    reports={name:dict(report) for name in ('market','quality','flow','challenger')},decision=decision)
 
     def roundtrip(self,call):
         warm=call('paper_tick',{},'warm');self.assertEqual(warm['result'],'warmed_up')

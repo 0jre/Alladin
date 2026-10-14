@@ -16,14 +16,14 @@ Nenhum prompt do diretório `upstream/` é carregado como instrução de execuç
 | Papel | Responsabilidade |
 |---|---|
 | Mercado | Regime, tendências, extremos, confluência e invalidação |
-| Solana | Limites de evidência SPL, mainnet, autoridades e dados ausentes |
+| Qualidade | Produto Coinbase, candles fechados, timestamps, livro, trades e dados ausentes |
 | Fluxo | Livro Coinbase, amostra de trades, custos e limites de execução |
 | Contestador | Pré-mortem, cenários adversos, contradições e custos estressados |
 | Gestor | Plano com evidências, condições, saída e submissão ao risco determinístico |
 
 Os três primeiros relatórios são independentes em relação às respostas entre si.
 O contestador vê os três; o gestor vê a revisão completa. A execução continua
-spot paper na Solana, com preço Coinbase e RPC somente leitura. O agente da sessão não
+spot paper SOL-USDC, exclusivamente com dados Coinbase. O agente da sessão não
 escolhe tamanho nem altera limites, e o backend pode recusar seu plano.
 
 ## Evidência em vez de conhecimento inventado
@@ -85,3 +85,5 @@ o backend não chama provedores, não configura modelos nem recebe credenciais d
 `rules` permanece como baseline explícito. Fixtures de submissões verificam os
 contratos e não demonstram vantagem econômica. Atualizações do bundle exigem revisão,
 atualização explícita dos hashes e reinício. Veja [o protocolo](../docs/external-sessions.md).
+
+Bundle ativo 2.0.0, protocolo external-session-v2. Nenhum agente recebe ou afirma verificações on-chain. O papel quality substitui onchain.

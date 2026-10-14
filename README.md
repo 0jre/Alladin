@@ -4,15 +4,15 @@ O módulo [Alladin Finance Prompt Engineering](finance_prompt_engineering/README
 
 `GET /v1/prompts`, `GET /v1/prompts/{role}` e MCP `prompts/list`/`prompts/get` disponibilizam a biblioteca revisada. `GET /v1/performance` e `python -m alladin performance` mostram estatísticas líquidas e incerteza. A meta de 898–899 acertos em 900 operações é apenas um critério de pesquisa, não uma capacidade demonstrada nem promessa de lucro.
 
-Backend Python de pesquisa e paper trading **exclusivamente na Solana mainnet**, em spot. Não há UI, conexão com Phantom/OKX, chave de carteira, assinatura ou envio de transações. Os agentes chamam comandos HTTP/MCP; o backend coleta evidências, calcula sinais, valida risco e registra decisões/fills simulados.
+Backend Python de pesquisa e paper trading **exclusivamente com dados da Coinbase**, no produto spot SOL-USDC. Não há UI, conexão com Phantom/OKX, chave de carteira, assinatura ou envio de transações. Os agentes chamam comandos HTTP/MCP; o backend coleta evidências, calcula sinais, valida risco e registra decisões/fills simulados.
 
 ## O que significa paper-live
 
-`paper-live` usa candles fechados, livro, trades recentes e volume de 24 horas do mercado spot SOL-USDC da Coinbase Advanced Trade. O RPC Solana é usado apenas para confirmar mainnet e dados do mint. O primeiro comando só aquece os indicadores; os próximos processam cada barra fechada uma vez. Barras faltantes, feed atrasado, snapshot stale ou erro de provedor interrompem o ciclo sem preencher retroativamente. A negociação acompanha o ativo SOL da Solana, enquanto os preços refletem o mercado centralizado da Coinbase.
+`paper-live` usa candles fechados, livro, trades recentes e volume de 24 horas do mercado spot SOL-USDC da Coinbase Advanced Trade. O primeiro comando só aquece os indicadores; os próximos processam cada barra fechada uma vez. Barras faltantes, feed atrasado, snapshot stale ou erro de provedor interrompem o ciclo sem preencher retroativamente. A negociação acompanha o ativo SOL da Solana, enquanto os preços refletem o mercado centralizado da Coinbase.
 
 O backend fornece os mesmos sinais, filtros e limites de risco configurados para o fluxo paper do Alladin. O saldo inicial padrão é **250 USDC**. As entradas e saídas são registradas localmente contra o midpoint atual da Coinbase, somando as taxas/slippage configuradas. Isso não é uma ordem Coinbase, uma cotação executável nem garantia de que um fill real teria esse preço. Não use os resultados como evidência de rentabilidade.
 
-Os endpoints públicos da Coinbase podem cachear ou limitar respostas; snapshots usam `Cache-Control: no-cache`. O RPC público tem limites e não é recomendado pela Solana para produção. Para serviço contínuo, configure provedores estáveis, supervisão, alertas e validação econômica independente.
+Os endpoints públicos da Coinbase podem cachear ou limitar respostas; snapshots usam `Cache-Control: no-cache`. Para serviço contínuo, configure provedores estáveis, supervisão, alertas e validação econômica independente.
 
 ## Iniciar uma sessão paper
 
@@ -75,7 +75,7 @@ O token HTTP protege acesso ao backend; não é uma credencial de inferência. V
 | `GET /v1/contract` | Contrato de endpoints e comandos |
 | `GET /v1/audit?limit=100` | Eventos de decisão e execução simulada |
 | `GET /v1/audit/verify` | Verifica o encadeamento de hashes dos eventos |
-| `paper_tick` | Coleta read-only de mercado Solana e processa um ciclo paper futuro |
+| `paper_tick` | Coleta read-only de mercado SOL-USDC Coinbase e processa um ciclo paper futuro |
 | `ingest` | Injeta barra fechada + snapshot Solana validados; útil para feeds próprios/testes |
 | `prepare_decision`, `submit_decision` | Contexto para a sessão e validação da decisão externa |
 | `analyze`, `evaluate` | Análise e validação de risco, sem enviar ordens |
@@ -112,3 +112,5 @@ Antes de repetir uma sessão bloqueada, rode `python -m alladin doctor` ou chame
 fase de rede e compatibilidade econômica dos planos padrão. `proxy_tunnel`
 indica falha anterior à resposta da API, que exige verificar o acesso do ambiente
 aos hosts públicos. Limites de risco não são relaxados para produzir negociações.
+
+O runtime não contém cliente RPC nem configuração `SOLANA_RPC_URL`. A fonte externa única é a Coinbase. O protocolo `external-session-v2` usa o papel `quality` no lugar de `onchain`; o bundle ativo é 2.0.0. Campos on-chain de snapshots antigos são compatibilidade de histórico e não aparecem no envelope de evidências.

@@ -35,18 +35,19 @@ def evidence_envelope(f,s,book,cfg,proposals,now,memory=()):
     envelope=dict(schema_version='1.0',as_of=now,
         mandate=dict(chain=cfg.chain,market='spot',execution=cfg.execution,mint=s.mint,
                      sizing_mode=cfg.sizing_mode,confidence_is_win_probability=False),
-        features=dict(f),snapshot=asdict(s),portfolio=portfolio,
+        features=dict(f),snapshot={k:v for k,v in asdict(s).items() if k not in {
+            'account_checked','cluster_verified','slot','mint_authority','freeze_authority','token_program',
+            'top10_account_share','extensions','extensions_decoded','transfer_fee_bps'}},portfolio=portfolio,
         candidates=[asdict(replace(p,mint=s.mint)) for p in proposals],config=asdict(cfg),
         candidate_economics=candidate_economics(proposals,f,s,book,cfg,now),
         data_quality=dict(snapshot_age_seconds=now-s.timestamp,
-            missing_domains=['macro_news','order_routing','DEX_executable_liquidity','MEV',
+            missing_domains=['onchain_data','macro_news','order_routing','DEX_executable_liquidity','MEV',
                              'network_execution_costs','calibrated_win_probability','out_of_sample_edge'],
             volume_quote_is_estimated=True,source=s.source),
         memory=list(memory)[-20:],
         research_validation=dict(status='not_supplied',win_probability_calibrated=False,
                                  near_perfect_hit_rate_validated=False))
     registry={}
-    rpc_fields={'account_checked','cluster_verified','slot','mint_authority','freeze_authority','token_program','top10_account_share'}
     def visit(value,path):
         if isinstance(value,dict):
             for key,item in value.items():visit(item,path+'.'+str(key) if path else str(key))
@@ -55,8 +56,7 @@ def evidence_envelope(f,s,book,cfg,proposals,now,memory=()):
         elif value is not None:
             if isinstance(value,float) and not math.isfinite(value):
                 raise ValueError('Evidência numérica não finita')
-            source=('solana_rpc' if path.startswith('snapshot.') and path.split('.')[1] in rpc_fields else
-                    s.source if path.startswith('snapshot.') else
+            source=(s.source if path.startswith('snapshot.') else
                     'computed_closed_candles' if path.startswith('features.') else 'backend')
             available=(s.timestamp if path.startswith('snapshot.') else
                        f.get('bar_closed_at',now) if path.startswith('features.') else now)

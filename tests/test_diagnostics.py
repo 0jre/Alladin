@@ -50,7 +50,7 @@ class DiagnosticsTests(unittest.TestCase):
                 mcp=handle(service,{'jsonrpc':'2.0','method':'tools/call','params':{'name':'alladin_diagnostics','arguments':{}}})
             self.assertFalse(result['ready'])
             self.assertEqual(result['checks']['coinbase_market']['error']['source'],'coinbase_candles')
-            self.assertEqual(result['checks']['solana_mainnet']['error']['source'],'solana_getGenesisHash')
+            self.assertEqual(set(result['checks']),{'coinbase_market'})
             self.assertFalse(mcp['isError'])
             self.assertEqual(service.status(),before)
             self.assertEqual(service.store.verify_audit()['count'],0)

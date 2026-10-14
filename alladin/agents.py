@@ -91,7 +91,7 @@ class Council:
                     p.horizon_bars,'Sinal quantitativo contrário à posição','signal_reversal',mint=s.mint))
         guard_reasons=security_checks(s,cfg,now)
         baseline=ideas[0] if ideas else Proposal(thesis='Sem confluência suficiente',mint=s.mint)
-        audit=dict(mode=self.mode,protocol='external-session-v1' if self.mode=='external' else 'deterministic-rules',
+        audit=dict(mode=self.mode,protocol='external-session-v2' if self.mode=='external' else 'deterministic-rules',
                    candidates=[asdict(p) for p in ideas],security_reasons=guard_reasons,reports={})
         if not f.get('ready') or guard_reasons or book.halted:
             audit['gate']='precheck_abstention'
@@ -99,7 +99,7 @@ class Council:
         if self.mode=='rules':
             audit['reports']={
                 'market':{'regime':f['regime'],'score':baseline.confidence},
-                'onchain':{'warnings':list(s.warnings),'checks_passed':True},
+                'quality':{'warnings':list(s.warnings),'checks_passed':True},
                 'flow':{'organic_score':s.organic_score,'imbalance':s.buy_sell_imbalance},
                 'challenger':{'concerns':['Scores não calibrados','Alladin aceita somente Solana spot paper']},
                 'manager':asdict(baseline)}
@@ -123,14 +123,14 @@ class Council:
                     decision_schema=deepcopy(DECISION_SCHEMA),
                     instructions={role:self.prompts.render(role,f.get('regime'))
                                   for role in sorted(PromptLibrary.ROLES)},
-                    stages=[['market','onchain','flow'],['challenger'],['manager']])
+                    stages=[['market','quality','flow'],['challenger'],['manager']])
                 return abstain('Aguardando decisão dos agentes da sessão externa','awaiting_external_agents')
             if not isinstance(submission,dict) or set(submission)!={'reports','decision'}:
                 raise DataError('Submissão exige reports e decision')
             reports=submission['reports']
-            if not isinstance(reports,dict) or set(reports)!={'market','onchain','flow','challenger'}:
+            if not isinstance(reports,dict) or set(reports)!={'market','quality','flow','challenger'}:
                 raise DataError('Quatro pareceres externos obrigatórios')
-            for name in ['market','onchain','flow','challenger']:
+            for name in ['market','quality','flow','challenger']:
                 audit['reports'][name]=validate_report(deepcopy(reports[name]),allowed)
             vetoes=[name for name,r in audit['reports'].items() if r['blocking']]
             audit['vetoes']=vetoes
@@ -161,7 +161,7 @@ class Council:
                 if not any(p.action==x['action'] and p.market==x['market'] and p.strategy==x['strategy'] for x in admissible):
                     raise DataError('Decisão de entrada sem candidato econômico aprovado')
                 contrary=[name for name,r in audit['reports'].items() if name!='manager' and r['stance'] in {'SHORT','CLOSE'}]
-                supports=sum(audit['reports'][name]['stance']=='LONG' and audit['reports'][name]['score']>=cfg.min_confidence for name in ['market','onchain','flow'])
+                supports=sum(audit['reports'][name]['stance']=='LONG' and audit['reports'][name]['score']>=cfg.min_confidence for name in ['market','quality','flow'])
                 if vetoes or contrary or supports<2:
                     return abstain('Conselho sem consenso independente para entrada','consensus_abstention')
                 check=approve(p,f,s,book,cfg,now,s.price)

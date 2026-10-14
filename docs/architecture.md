@@ -1,12 +1,12 @@
 # Arquitetura do Alladin
 
-Alladin é um backend Python de análise e paper trading para Solana mainnet. O servidor expõe comandos JSON por HTTP autenticado e MCP stdio. Não tem interface gráfica, não se conecta à Phantom/OKX, não carrega assinante e não envia transações.
+Alladin é um backend Python de análise e paper trading para SOL-USDC na Coinbase. O servidor expõe comandos JSON por HTTP autenticado e MCP stdio. Não tem interface gráfica, não se conecta à Phantom/OKX, não carrega assinante e não envia transações.
 
 ## Caminho de mercado paper
 
 1. `CoinbaseMarket` coleta candles fechados do produto SOL-USDC, o livro, trades recentes e volume de 24 horas pelos endpoints públicos Coinbase Advanced Trade.
 2. O provedor recusa candles abertos, lacunas, produtos que não sejam SOL e snapshots sem bid/ask ou dados de trade válidos.
-3. `SolanaRPC` verifica mainnet e os dados SPL do mint por métodos de leitura.
+3. O snapshot identifica SOL-USDC e conserva o timestamp do livro Coinbase, sem verificações on-chain.
 4. O motor calcula features e estratégias, a sessão externa propõe LONG/HOLD/CLOSE e o risco determina se há aprovação e tamanho.
 5. `PaperBroker` atualiza a carteira local e o SQLite registra resposta idempotente e evento auditável.
 
@@ -16,7 +16,7 @@ O aquecimento não opera. Se o processo perder barras sem uma posição aberta, 
 
 | Módulo | Responsabilidade |
 |---|---|
-| `providers.py` | Coleta de mercado Solana e RPC somente leitura |
+| `providers.py` | Candles, livro, trades e volume exclusivamente Coinbase |
 | `features.py`, `strategies.py` | Indicadores e propostas de estratégia |
 | `agents.py` | Contratos e validação de decisões externas; baseline rules |
 | `risk.py` | Gates, dimensionamento e circuit breakers |
@@ -30,7 +30,7 @@ O aquecimento não opera. Se o processo perder barras sem uma posição aberta, 
 
 `Config` aceita apenas `chain=solana`, `execution=paper` e `allowed_markets=["spot"]`. A lógica de decisão e risco é compartilhada pelo ciclo paper. O fill de `paper_tick` usa o midpoint Coinbase mais fee/slippage definidos em configuração; não é uma cotação de rota nem replica impacto/execução de swap.
 
-As coletas de mercado/RPC são feitas antes da transação de escrita. A análise dos
+As coletas de mercado Coinbase são feitas antes da transação de escrita. A análise dos
 agentes acontece na sessão consumidora, sem transação SQLite aberta e sem chamada
 de inferência pelo Alladin. Preparação e submissão são comandos separados e duráveis.
 Resposta idempotente, mutação e evento persistem na mesma transação. O feed público
@@ -52,7 +52,7 @@ em `alladin/finance_prompts`, incluída no pacote Python. Veja o [mapa de adapta
 ```mermaid
 flowchart TD
   A["Candles fechados e snapshot verificado"] --> B["Envelope e registro de evidências"]
-  P["Bundle de prompts com hashes"] --> C["Mercado, Solana e fluxo independentes"]
+  P["Bundle de prompts com hashes"] --> C["Mercado, qualidade e fluxo independentes"]
   B --> C
   B --> E["Prévia determinística: risco, custos e estresse"]
   C --> D["Contestador e pré-mortem"]

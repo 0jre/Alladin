@@ -101,7 +101,7 @@ class OperationsTests(unittest.TestCase):
         now=1800000065
         bars=[Candle(1800000000-80*60+i*60,100,101,99,100,10000) for i in range(81)]
         snap=Snapshot(now,price=100,liquidity_usd=10_000_000,volume_24h_usd=50_000_000,
-                      account_checked=True,cluster_verified=True,source='coinbase_advanced_sol_spot')
+                      account_checked=True,cluster_verified=True,source='coinbase_advanced_sol_spot',product_id='SOL-USDC')
         service=Service(self.cfg,self.path,council=Council())
         with patch.object(service,'_collect_paper_data',return_value={'candles':bars[:80],'snapshot':None}),patch('alladin.engine.time.time',return_value=now-60):
             service.command('paper_tick',{},'warm')
@@ -112,7 +112,7 @@ class OperationsTests(unittest.TestCase):
         service=Service(self.cfg,self.path,council=Council())
         later=now+60
         later_snap=Snapshot(later,price=97,liquidity_usd=10_000_000,volume_24h_usd=50_000_000,
-                           account_checked=True,cluster_verified=True,source='coinbase_advanced_sol_spot')
+                           account_checked=True,cluster_verified=True,source='coinbase_advanced_sol_spot',product_id='SOL-USDC')
         bars=bars+[Candle(bars[-1].timestamp+60,100,101,96,97,10000)]
         with patch.object(service,'_collect_paper_data',return_value={'candles':bars,'snapshot':later_snap}),patch('alladin.engine.time.time',return_value=later):
             closed=service.command('paper_tick',{},'close')
@@ -134,7 +134,7 @@ class OperationsTests(unittest.TestCase):
             state.update(portfolio=book.serialize(),last_timestamp=bars[0].timestamp-600,history=[b.__dict__ for b in bars[:81]])
             service.store.save(db,state)
         snap=Snapshot(now+180,price=95,liquidity_usd=10_000_000,volume_24h_usd=50_000_000,
-                      account_checked=True,cluster_verified=True,source='coinbase_advanced_sol_spot')
+                      account_checked=True,cluster_verified=True,source='coinbase_advanced_sol_spot',product_id='SOL-USDC')
         with patch.object(service,'_collect_paper_data',return_value={'candles':bars,'snapshot':snap}),patch('alladin.engine.time.time',return_value=now+180):
             result=service.command('paper_tick',{},'recover')
         self.assertTrue(result['halted'])
@@ -154,7 +154,7 @@ class OperationsTests(unittest.TestCase):
         now=1800000065
         bars=[Candle(1800000000-80*60+i*60,100,101,99,100,10000) for i in range(81)]
         snap=Snapshot(now,price=100,liquidity_usd=10_000_000,volume_24h_usd=50_000_000,
-                      account_checked=True,cluster_verified=True,source='coinbase_advanced_sol_spot')
+                      account_checked=True,cluster_verified=True,source='coinbase_advanced_sol_spot',product_id='SOL-USDC')
         service=Service(self.cfg,self.path)
         with patch.object(service,'_collect_paper_data',return_value={'candles':bars[:80],'snapshot':None}),patch('alladin.engine.time.time',return_value=now-60):
             service.command('paper_tick',{},'warm')
@@ -173,7 +173,7 @@ class OperationsTests(unittest.TestCase):
         now=1800000065
         bars=[Candle(1800000000-80*60+i*60,100,101,99,100,10000) for i in range(81)]
         snap=Snapshot(now-10,price=100,liquidity_usd=10_000_000,volume_24h_usd=50_000_000,
-                      account_checked=True,cluster_verified=True,source='coinbase_advanced_sol_spot')
+                      account_checked=True,cluster_verified=True,source='coinbase_advanced_sol_spot',product_id='SOL-USDC')
         service=Service(self.cfg,self.path)
         with patch.object(service,'_collect_paper_data',return_value={'candles':bars[:80],'snapshot':None}),patch('alladin.engine.time.time',return_value=now-60):
             service.command('paper_tick',{},'warm')
@@ -200,11 +200,10 @@ class OperationsTests(unittest.TestCase):
             self.assertIsNone(HTTP._retry_after(error))
         with self.assertRaises(ValueError):HTTP(timeout=float('nan'))
 
-    def test_market_timestamp_is_not_rejuvenated_by_rpc_delay(self):
-        fake=SimpleNamespace(inspect=lambda mint:{'mint_authority':None,'freeze_authority':None,
-            'top10_account_share':None,'token_program':'x','slot':1,'warnings':[]})
+    def test_market_timestamp_is_not_rejuvenated_during_collection(self):
         with patch('alladin.providers.time.time',return_value=200):
-            with self.assertRaises(DataError):collect(rpc=fake,market={'observed_at':100,'price':100})
+            with self.assertRaises(DataError):collect(market={'observed_at':100,'price':100,
+                'product_id':'SOL-USDC','source':'coinbase_advanced_sol_spot'})
 
     def test_volume_cache_uses_only_completed_24_hour_window(self):
         now=1800000000//3600*3600+30

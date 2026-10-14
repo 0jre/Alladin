@@ -8,7 +8,7 @@ from .transport import DataError
 
 
 class PromptLibrary:
-    ROLES = {'market','onchain','flow','challenger','manager'}
+    ROLES = {'market','quality','flow','challenger','manager'}
 
     def __init__(self,root=None):
         self.root = root if root is not None else files('alladin').joinpath('finance_prompts')

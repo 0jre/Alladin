@@ -118,7 +118,7 @@ class FinanceCouncilTests(unittest.TestCase):
         if 'task' in a:
             task=a['task'];e=task['evidence'];reports={}
             try:
-                for name in ['market','onchain','flow','challenger']:
+                for name in ['market','quality','flow','challenger']:
                     inp=deepcopy(e);inp['prior_reports']=deepcopy(reports) if name=='challenger' else {}
                     reports[name]=validate_report(client.ask(task['instructions'][name],inp,REPORT_SCHEMA,name),e['evidence_registry'])
                 decision={} if any(r['blocking'] for r in reports.values()) and not b.positions else client.ask(task['instructions']['manager'],{**deepcopy(e),'reports':deepcopy(reports)}, {},'manager')
@@ -131,18 +131,18 @@ class FinanceCouncilTests(unittest.TestCase):
         p,a,client=self.run_case()
         self.assertEqual(p.action,'LONG',a)
         self.assertTrue(a['risk_recheck']['approved'])
-        self.assertEqual(a['prompt_pack']['version'],'1.0.0')
+        self.assertEqual(a['prompt_pack']['version'],'2.0.0')
         self.assertEqual(len(a['evidence_sha256']),64)
         self.assertEqual(client.calls,5)
 
     def test_first_three_reports_are_blind_challenger_and_manager_see_review(self):
         p,a,client=self.run_case()
         for name,role,env in client.records[:3]:self.assertEqual(env['prior_reports'],{})
-        self.assertEqual(set(client.records[3][2]['prior_reports']),{'market','onchain','flow'})
-        self.assertEqual(set(client.records[4][2]['reports']),{'market','onchain','flow','challenger'})
+        self.assertEqual(set(client.records[3][2]['prior_reports']),{'market','quality','flow'})
+        self.assertEqual(set(client.records[4][2]['reports']),{'market','quality','flow','challenger'})
 
     def test_analyst_block_vetoes_entry_without_manager_call(self):
-        p,a,client=self.run_case(ModelFixture(reports={'onchain':{'blocking':True}}))
+        p,a,client=self.run_case(ModelFixture(reports={'quality':{'blocking':True}}))
         self.assertEqual(p.action,'HOLD')
         self.assertEqual(a['gate'],'analyst_veto')
         self.assertEqual(client.calls,4)
@@ -153,7 +153,7 @@ class FinanceCouncilTests(unittest.TestCase):
         self.assertEqual(a['gate'],'consensus_abstention')
 
     def test_low_scores_do_not_count_as_independent_support(self):
-        p,a,_=self.run_case(ModelFixture(reports={'flow':{'score':.1},'onchain':{'score':.1}}))
+        p,a,_=self.run_case(ModelFixture(reports={'flow':{'score':.1},'quality':{'score':.1}}))
         self.assertEqual(p.action,'HOLD')
         self.assertEqual(a['gate'],'consensus_abstention')
 

@@ -31,7 +31,7 @@ class ExternalSessionTests(unittest.TestCase):
 
     def submission(self,task):
         fake=ModelFixture();env=task['evidence'];reports={}
-        for role in ['market','onchain','flow','challenger']:
+        for role in ['market','quality','flow','challenger']:
             reports[role]=fake.ask('',env,{},role)
         decision=fake.ask('',env,{},'manager')
         return dict(task_id=task['id'],evidence_sha256=task['evidence_sha256'],
@@ -43,7 +43,7 @@ class ExternalSessionTests(unittest.TestCase):
         with patch('alladin.transport.HTTP.json',side_effect=AssertionError('No inference')):
             task=self.prepare()
         self.assertEqual(task['status'],'prepared')
-        self.assertEqual(task['stages'],[['market','onchain','flow'],['challenger'],['manager']])
+        self.assertEqual(task['stages'],[['market','quality','flow'],['challenger'],['manager']])
         self.assertIsNone(self.service.status()['pending'])
 
     def test_restart_and_idempotent_commit_no_duplicate_trade(self):
@@ -88,21 +88,21 @@ class ExternalSessionTests(unittest.TestCase):
         result=handle(self.service,{'jsonrpc':'2.0','method':'tools/call','params':{
             'name':'prepare_decision','arguments':{'idempotency_key':'prepare'}}})
         self.assertFalse(result['isError'])
-        self.assertEqual(json.loads(result['content'][0]['text'])['task']['protocol'],'external-session-v1')
+        self.assertEqual(json.loads(result['content'][0]['text'])['task']['protocol'],'external-session-v2')
 
     def live(self):
         with self.service.store.transaction() as db:
             state=self.service._load(db);state['input_mode']='paper_live'
             state['snapshot']['source']='coinbase_advanced_sol_spot'
             self.service.store.save(db,state)
-        fresh=replace(self.s,source='coinbase_advanced_sol_spot')
+        fresh=replace(self.s,source='coinbase_advanced_sol_spot',product_id='SOL-USDC')
         return patch('alladin.engine.collect',return_value=fresh)
 
     def test_first_prepare_uses_collected_snapshot_after_warmup(self):
         with self.service.store.transaction() as db:
             state=self.service._load(db);state['snapshot']=None;state['input_mode']='paper_live'
             self.service.store.save(db,state)
-        with patch('alladin.engine.collect',return_value=replace(self.s,source='coinbase_advanced_sol_spot')):
+        with patch('alladin.engine.collect',return_value=replace(self.s,source='coinbase_advanced_sol_spot',product_id='SOL-USDC')):
             task=self.prepare()
         self.assertEqual(task['status'],'prepared')
         self.assertEqual(task['evidence']['snapshot']['source'],'coinbase_advanced_sol_spot')
@@ -110,7 +110,7 @@ class ExternalSessionTests(unittest.TestCase):
     def test_live_refresh_executes_once_and_records_session(self):
         with self.live() as collect:
             task=self.prepare();args=self.submission(task)
-            with patch('alladin.engine.time.time',return_value=1100),patch('alladin.engine.collect',return_value=replace(self.s,timestamp=1100,source='coinbase_advanced_sol_spot')):
+            with patch('alladin.engine.time.time',return_value=1100),patch('alladin.engine.collect',return_value=replace(self.s,timestamp=1100,source='coinbase_advanced_sol_spot',product_id='SOL-USDC')):
                 result=self.service.command('submit_decision',args,'submit')
                 again=self.service.command('submit_decision',args,'submit')
             self.assertEqual(result,again)
@@ -137,7 +137,7 @@ class ExternalSessionTests(unittest.TestCase):
 
     def test_live_changed_price_rejects_instead_of_filling_stale_context(self):
         with self.live():task=self.prepare()
-        fresh=replace(self.s,timestamp=1100,price=105,source='coinbase_advanced_sol_spot')
+        fresh=replace(self.s,timestamp=1100,price=105,source='coinbase_advanced_sol_spot',product_id='SOL-USDC')
         with patch('alladin.engine.time.time',return_value=1100),patch('alladin.engine.collect',return_value=fresh):
             with self.assertRaises(ValueError):self.service.command('submit_decision',self.submission(task),'deviation')
         self.assertEqual(self.service.status()['positions'],[])

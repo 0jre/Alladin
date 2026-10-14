@@ -30,7 +30,7 @@ uma barra. Chame `prepare_decision` sem argumentos. A resposta contém `task`:
 | `evidence` | Indicadores, snapshot, carteira, candidatos, custos, riscos e lacunas |
 | `instructions` | Prompts revisados dos cinco papéis |
 | `report_schema`, `decision_schema` | Contratos JSON exatos de saída |
-| `stages` | Mercado/Solana/fluxo, contestador, gestor |
+| `stages` | Mercado/qualidade/fluxo, contestador, gestor |
 
 O coordenador fornece a cada um dos três analistas apenas o envelope e seu prompt.
 Depois entrega os três relatórios ao contestador e os quatro ao gestor. Pode usar
@@ -49,7 +49,7 @@ Envie em `POST /v1/commands` com Idempotency-Key ou em `tools/call` no MCP:
     "session_id": "identificador opaco da sessão, sem segredos",
     "reports": {
       "market": {},
-      "onchain": {},
+      "quality": {},
       "flow": {},
       "challenger": {}
     },
@@ -94,3 +94,5 @@ primeiro snapshot verificado antes de verificar a disponibilidade do contexto.
 candidato viável retorna `abstained`, conserva o snapshot coletado e registra o
 motivo. Comandos de coleta compartilham um prazo total de 15 segundos; consumidores
 podem repetir falhas transitórias com a mesma chave, sem usar dados fabricados.
+
+A partir de `external-session-v2`, os pareceres são `market`, `quality`, `flow` e `challenger`. O papel `onchain` não é aceito. Use nova preparação para tarefas do protocolo anterior; saldos e histórico não são zerados. A única fonte de dados é a Coinbase; não existe RPC ou verificação blockchain.

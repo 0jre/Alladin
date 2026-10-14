@@ -84,6 +84,7 @@ class Snapshot:
     expected_funding_hourly: float | None = None
     perp_market_verified: bool = False
     source: str = 'unknown'
+    product_id: str | None = None
     slot: int | None = None
     warnings: tuple = ()
     available_at: int | None = None
@@ -109,6 +110,8 @@ class Snapshot:
         for name in ['mint_authority','freeze_authority']:
             if getattr(self,name) is not None:
                 pubkey(getattr(self,name))
+        if self.product_id is not None and self.product_id!='SOL-USDC':
+            raise ValueError('Produto Coinbase não suportado')
         if not isinstance(self.source,str) or len(self.source)>200:
             raise ValueError('source inválida')
         if not isinstance(self.warnings,(tuple,list)) or len(self.warnings)>30 or any(not isinstance(w,str) or len(w)>1000 for w in self.warnings):

@@ -26,7 +26,7 @@
   {
     "type": "function",
     "name": "alladin_command",
-    "description": "Call the authenticated Alladin backend. It only supports Solana mainnet spot paper cycles and read-only market/RPC collection. It never connects a wallet, signs, or sends a transaction. Supply a unique idempotency key per logical request.",
+    "description": "Call the authenticated Alladin backend. It only supports Coinbase-only SOL-USDC spot paper cycles and public market collection. It never connects a wallet, signs, or sends a transaction. Supply a unique idempotency key per logical request.",
     "parameters": {
       "type": "object",
       "properties": {

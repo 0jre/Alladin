@@ -1,6 +1,6 @@
 # Feed e contrato temporal
 
-Alladin aceita candles e snapshots Solana. O timestamp do candle marca sua abertura; o do snapshot marca quando a observação ficou disponível. Candles abertos, futuros ou fora de sequência são recusados.
+O fluxo live coleta exclusivamente candles e snapshots SOL-USDC da Coinbase; não há RPC. A identificação Solana é metadado do ativo. `ingest` é reservado a replay/testes e conserva compatibilidade com dados históricos. O timestamp do candle marca sua abertura; o do snapshot marca quando a observação ficou disponível. Candles abertos, futuros ou fora de sequência são recusados.
 
 ```json
 {
@@ -22,12 +22,8 @@ Alladin aceita candles e snapshots Solana. O timestamp do candle marca sua abert
     "liquidity_usd": 10000000.0,
     "volume_24h_usd": 50000000.0,
     "buy_sell_imbalance": 0.1,
-    "mint_authority": null,
-    "freeze_authority": null,
-    "top10_account_share": null,
-    "account_checked": true,
-    "cluster_verified": true,
-    "source": "EXEMPLO_FICTICIO",
+    "product_id": "SOL-USDC",
+    "source": "coinbase_advanced_sol_spot",
     "warnings": ["Exemplo sintético; não usar como sinal ou preço real."]
   }
 }

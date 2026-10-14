@@ -27,11 +27,11 @@ def tools():
     optional = {}
     return [
         _tool('alladin_status', 'Carteira paper, posições, pendência e bloqueios. Não envia ordem.', {}),
-        _tool('alladin_diagnostics', 'Verifica acesso atual a Coinbase e RPC; informa fase da falha e não altera carteira.', {}),
+        _tool('alladin_diagnostics', 'Verifica acesso atual a Coinbase; informa fase da falha e não altera carteira.', {}),
         _tool('alladin_performance', 'Estatística de trades líquidos, incerteza e meta observada de 900 entradas. Não promete lucro.', {}),
         _tool('alladin_audit', 'Eventos recentes de decisão e execução.', {'limit': {'type': 'integer'}}),
         _tool('alladin_contract', 'Contrato de comandos do Alladin.', {}),
-        _tool('paper_tick', 'Coleta candles, livro e trades públicos da Coinbase mais snapshot RPC somente leitura da Solana; aquece com OHLCV real e processa no máximo uma barra paper spot. Não acessa carteira nem envia transação.', {}),
+        _tool('paper_tick', 'Coleta candles, livro e trades públicos da Coinbase do produto SOL-USDC; aquece com OHLCV real e processa no máximo uma barra paper spot. Não acessa carteira nem envia transação.', {}),
         _tool('ingest', 'Barra fechada e snapshot. O conselho decide; a entrada paper sai na barra seguinte.', {'candle': {'type': 'object'}, 'snapshot': {'type': 'object'}}, ('candle', 'snapshot')),
         _tool('prepare_decision', 'Prepara evidências e prompts para os agentes da sessão. Não faz inferência.', {}),
         _tool('submit_decision', 'Valida pareceres externos e plano; execução somente paper.', {k:{'type':'object' if k in {'reports','decision'} else 'string'} for k in ['task_id','evidence_sha256','reports','decision','session_id']}, ('task_id','evidence_sha256','reports','decision','session_id')),

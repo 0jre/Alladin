@@ -14,7 +14,7 @@ from .prompts import PromptLibrary
 CONTRACT = {
     'version':'0.6','venue':'coinbase_advanced','chain':'solana','execution':'paper',
     'endpoints':{'GET /health':'process health; no portfolio data',
-                 'GET /v1/diagnostics':'read-only Coinbase/RPC checks with failure phase; no ledger mutation',
+                 'GET /v1/diagnostics':'read-only Coinbase checks with failure phase; no ledger mutation',
                  'GET /v1/status':'persistent portfolio state',
                  'GET /v1/performance':'closed-trade statistics, uncertainty and 900-entry research target; no profit guarantee',
                  'GET /v1/prompts':'reviewed finance prompt-pack metadata',
@@ -26,7 +26,7 @@ CONTRACT = {
                  'GET /v1/audit/verify':'verify event hash chain',
                  'POST /v1/commands':'{command,args}; Bearer token + Idempotency-Key'},
     'commands':{
-        'paper_tick':{'args':[],'result':'read-only Coinbase SOL-USDC market data plus Solana RPC -> forward-only warmup or spot paper cycle; never signs or sends'},
+        'paper_tick':{'args':[],'result':'read-only Coinbase SOL-USDC market data only -> forward-only warmup or spot paper cycle; never signs or sends'},
         'ingest':{'args':['candle','snapshot'],'result':'closed bar -> agents -> risk -> pending paper action'},
         'prepare_decision':{'args':[],'result':'frozen evidence, schemas and role prompts for external session agents; no inference'},
         'submit_decision':{'args':['task_id','evidence_sha256','reports','decision','session_id'],'result':'validate externally produced reports and plan; risk recheck; paper only'},
@@ -40,8 +40,8 @@ CONTRACT = {
         'unwatch':{'args':['mint'],'result':'drop a mint back to eligible and cancel its pending action'}},
     'agent_flow':['paper_tick','prepare_decision','session agents and subagents','submit_decision','status/audit'],
     'mcp':{'command':'python -m alladin mcp','transport':'stdio'},
-    'notes':['Backend Python; Solana mainnet only; spot paper only.',
-             'paper_tick reads Coinbase Advanced Trade public SOL spot market data and read-only Solana RPC.',
+    'notes':['Backend Python; Coinbase-only SOL-USDC data; spot paper only.',
+             'paper_tick reads Coinbase Advanced Trade public SOL spot market data exclusively.',
              'No wallet connection, signer, transaction builder or transaction submission.',
              'Paper fills use the current Coinbase midpoint plus configured cost assumptions; they are not routed quotes.',
              'ingest automatically invokes the council; synthetic replay is not a live-market performance test.']}

@@ -345,7 +345,7 @@ class HTTPTests(unittest.TestCase):
         with self.request('/v1/prompts/manager?regime=trend') as response:
             data=json.load(response)
             self.assertIn('PAPER',data['instructions'])
-            self.assertEqual(data['metadata']['version'],'1.0.0')
+            self.assertEqual(data['metadata']['version'],'2.0.0')
         with self.request('/v1/performance') as response:
             data=json.load(response)
             self.assertEqual(data['closed_roundtrips'],0)

@@ -15,8 +15,7 @@ HOLD é uma decisão válida. O serviço não força entradas para produzir trad
 
 ## Iniciar servidor e worker
 
-Configure `LAB_API_TOKEN` no ambiente, com pelo menos 32 caracteres. Para RPC
-dedicado, configure `SOLANA_RPC_URL` com um endpoint HTTPS Solana mainnet.
+Configure `LAB_API_TOKEN` no ambiente, com pelo menos 32 caracteres. Não há endpoint RPC ou configuração de blockchain.
 
 ```bash
 python -m alladin --config config.json --db data/paper-250.sqlite serve --paper-worker --poll-seconds 30
@@ -54,7 +53,7 @@ Não deixe o worker em um terminal temporário esperando continuidade 24/7.
 | `GET /v1/audit/verify` | Autenticado: valida encadeamento de eventos |
 
 Snapshots de livro exigem o produto esperado e horário da fonte com no máximo
-30 segundos. O RPC é consultado antes da última cotação. Preço antigo não ganha
+30 segundos. Preço antigo não ganha
 um timestamp novo depois de uma chamada lenta. Se o conselho demora e o preço
 expira, uma nova entrada é bloqueada e o orçamento usado pelo conselho é persistido.
 
@@ -137,7 +136,7 @@ orçamento: a resposta tardia é descartada e nunca aplica uma operação na car
 A biblioteca limita a quatro leituras HTTP concorrentes por processo. Uma leitura
 que o sistema operacional ainda não encerrou ocupa uma dessas vagas até sair;
 não são criadas threads ilimitadas. Se todas as vagas estiverem ocupadas, a coleta
-falha dentro do prazo. Isso não promete disponibilidade de Coinbase/RPC.
+falha dentro do prazo. Isso não promete disponibilidade de Coinbase.
 
 Uma demonstração usa a mesma camada de orçamento, limitada também pelo tempo
 restante da janela inteira:
@@ -168,8 +167,8 @@ python -m alladin --config config.json doctor
 O diagnóstico é somente leitura, retorna código de saída 0 quando suas condições
 necessárias passam e 2 quando há bloqueio. Também está em `GET /v1/diagnostics`
 (autenticado) e MCP `alladin_diagnostics`. Não grava feed, modifica saldo ou opera.
-`checks` verifica Coinbase e RPC separadamente; `sources_ready` não implica sinal
-nem aprovação de risco. Cada grupo tem até 15 segundos, até 30 no diagnóstico todo.
+`checks` verifica somente a Coinbase; `sources_ready` não implica sinal
+nem aprovação de risco. Cada grupo tem até 15 segundos, até 15 no diagnóstico todo.
 
 Falhas expõem somente `code`, `stage` e `source` conhecidos. `proxy_tunnel`
 identifica falha na conexão CONNECT ao proxy, antes do TLS e da resposta da API.
@@ -177,13 +176,10 @@ identifica falha na conexão CONNECT ao proxy, antes do TLS e da resposta da API
 ajudam a distinguir rede de dados inválidos. Nunca são exibidos URLs com segredo,
 credenciais, cabeçalhos de autenticação ou corpos de erro do provedor.
 
-No ambiente Work usado em 2026-10-14, a conexão ao proxy local funcionou, CONNECT
-para chatgpt.com retornou 200, mas CONNECT para os hosts Coinbase/Solana expirou.
-O doctor também observou `proxy_tunnel` na coleta. Isso demonstra o ponto da falha
-neste ambiente; não demonstra indisponibilidade das APIs na internet. Os destinos
-necessários precisam estar autorizados no proxy/egress do ambiente que executa o
-backend. A lista de destinos deste ambiente não é configuração do Alladin.
-Não contornar regras de rede nem substituir o RPC por snapshots fabricados.
+A versão atual usa apenas a Coinbase. Em sessões anteriores havia também RPC,
+removido por solicitação do usuário. Para coletar mercado, o ambiente precisa de
+acesso HTTPS a api.coinbase.com. Remover RPC não libera automaticamente esse
+acesso no proxy. Não contornar regras de rede nem fabricar snapshots.
 
 `profile_feasibility` verifica uma condição necessária dos planos padrão em uma
 conta inicialmente sem posições. O perfil de saldo integral atual tem custos de

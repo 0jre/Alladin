@@ -80,7 +80,7 @@ class Service:
         task.update(id=uuid.uuid4().hex,context_sha256=context_hash(state),
                     evidence_sha256=audit['evidence_sha256'],created_at=created,
                     expires_at=created+min(300,self.cfg.timeframe_seconds),
-                    status='prepared',protocol='external-session-v1')
+                    status='prepared',protocol='external-session-v2')
         state['external_task']=task
         self.store.save(db,state)
         self.store.event(db,created,'prepare_decision',dict(id=task['id'],evidence_sha256=task['evidence_sha256']))
@@ -316,7 +316,7 @@ class Service:
                 marks[mint] = series['last_price']
         # Per-mint marks: a scalar price would misprice positions of other mints.
         price = marks if marks else 0
-        return dict(chain=self.cfg.chain,venue='coinbase_advanced',execution=self.cfg.execution,asset=f'{self.cfg.mint}/USDC',agent_mode=self.council.mode,
+        return dict(chain=self.cfg.chain,venue='coinbase_advanced',data_sources=['coinbase'],product_id='SOL-USDC',onchain_verification=False,execution=self.cfg.execution,asset=f'{self.cfg.mint}/USDC',agent_mode=self.council.mode,
                     sizing_mode=self.cfg.sizing_mode,bars_processed=state['bars_processed'],last_timestamp=state['last_timestamp'],
                     equity_usdc=book.equity(price),cash_usdc=book.cash,
                     gross_usdc=book.gross(price),net_usdc=book.net(price),
@@ -390,6 +390,8 @@ class Service:
                     raise ValueError('Não misture paper-live e replay no mesmo banco')
         if name=='prepare_decision' and (args or self.council.mode!='external'):
             raise ValueError('prepare_decision exige modo external e nenhum argumento')
+        if name=='submit_decision' and (state.get('external_task') or {}).get('protocol')!='external-session-v2':
+            raise ValueError('Tarefa de protocolo antigo ou ausente; execute prepare_decision novamente')
         paper_data = self._collect_paper_data(args) if name == 'paper_tick' else None
         if name in {'prepare_decision','submit_decision'} and state.get('input_mode')=='paper_live':
             # Reasoning runs in the caller's session. Refresh execution observations
@@ -416,7 +418,7 @@ class Service:
         step = self.cfg.timeframe_seconds
         if step % 60 or step // 60 not in {1,5,15}:
             raise ValueError('timeframe paper deve ser 1, 5 ou 15 minutos')
-        # Read the last committed bar to avoid the RPC checks when no new candle exists.
+        # Read the last committed bar to avoid fetching a new quote when no new candle exists.
         with self.store.connect() as db:
             state = self._load(db)
         if self._provider is None:
@@ -427,7 +429,7 @@ class Service:
             raise DataError('Feed Coinbase atrasado; ciclo bloqueado')
         snap = None
         if state['last_timestamp'] is not None and candles[-1].timestamp > state['last_timestamp']:
-            # RPC first, quote last: RPC latency must not rejuvenate an old price.
+            # Coinbase book timestamp must remain the original observation time.
             snap = collect(self.cfg.mint,market=lambda:provider.market(
                 self.cfg.mint,candles=candles,timeframe_seconds=step))
         return dict(candles=candles,snapshot=snap)
@@ -446,7 +448,7 @@ class Service:
             candles = paper_data['candles']
             if state['last_timestamp'] is None:
                 if len(candles) < self.cfg.warmup_bars:
-                    raise ValueError('OHLCV on-chain insuficiente para aquecimento')
+                    raise ValueError('OHLCV Coinbase insuficiente para aquecimento')
                 history = candles[-self.cfg.warmup_bars:]
                 for left,right in zip(history,history[1:]):
                     if right.timestamp != left.timestamp+step:
@@ -649,8 +651,8 @@ class Service:
         """Forward-only spot paper cycle using current Solana pool observations."""
         if b.mint != self.cfg.mint or s.mint != self.cfg.mint or b.chain != 'solana' or s.chain != 'solana':
             raise ValueError('paper_tick aceita somente o mint Solana configurado')
-        if s.source != 'coinbase_advanced_sol_spot' or not s.account_checked or not s.cluster_verified:
-            raise ValueError('Snapshot não veio de fontes Solana verificadas')
+        if s.source != 'coinbase_advanced_sol_spot' or s.product_id!='SOL-USDC':
+            raise ValueError('Snapshot não veio do produto Coinbase configurado')
         now = int(time.time())
         if s.timestamp > now+5 or now-s.timestamp > min(30,self.cfg.max_snapshot_age_seconds):
             raise DataError('Snapshot Solana futuro ou stale')

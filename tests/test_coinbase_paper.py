@@ -8,29 +8,22 @@ from unittest.mock import patch
 
 from alladin.engine import Service
 from alladin.models import Candle, Config, Proposal, Snapshot, SOL, TOKEN_PROGRAM, MAINNET_GENESIS
-from alladin.providers import CoinbaseMarket, SolanaRPC
+from alladin.providers import CoinbaseMarket, collect
 from alladin.risk import security_checks
 from alladin.transport import DataError
 
 
 class ProviderTests(unittest.TestCase):
-    def test_native_sol_rpc_skips_irrelevant_holder_concentration_calls(self):
-        class RPC(SolanaRPC):
-            def __init__(self):
-                self.methods=[]
-            def call(self,method,params=None):
-                self.methods.append(method)
-                if method=='getGenesisHash':return MAINNET_GENESIS
-                if method=='getAccountInfo':
-                    return {'value':{'owner':TOKEN_PROGRAM,'data':{'parsed':{'type':'mint','info':{
-                        'isInitialized':True,'mintAuthority':None,'freezeAuthority':None}}}},
-                        'context':{'slot':123}}
-                raise AssertionError(f'unexpected RPC call: {method}')
-        rpc=RPC()
-        result=rpc.inspect(SOL)
-        self.assertEqual(rpc.methods,['getGenesisHash','getAccountInfo'])
-        self.assertIsNone(result['top10_account_share'])
-        self.assertEqual(result['slot'],123)
+    def test_coinbase_snapshot_has_no_claim_of_onchain_verification(self):
+        market=dict(product_id='SOL-USDC',source='coinbase_advanced_sol_spot',observed_at=1000,
+                    price=100,liquidity_usd=1e7,volume_24h_usd=5e7,buy_sell_imbalance=0)
+        with patch('alladin.providers.time.time',return_value=1000):
+            snapshot=collect(market=market)
+        self.assertFalse(snapshot.account_checked)
+        self.assertFalse(snapshot.cluster_verified)
+        self.assertIsNone(snapshot.slot)
+        self.assertEqual(snapshot.product_id,'SOL-USDC')
+        self.assertEqual(security_checks(snapshot,Config(),1000),[])
 
     def test_coinbase_product_is_fixed_to_usdc_quoted_sol(self):
         with self.assertRaises(ValueError):
@@ -97,7 +90,7 @@ class LivePaperTests(unittest.TestCase):
         first=(now//60)*60-81*60
         bars=[Candle(first+i*60,100,101,99,100,10000) for i in range(81)]
         market=dict(price=100,liquidity_usd=10_000_000,volume_24h_usd=50_000_000,
-                    buy_sell_imbalance=0,source='coinbase_advanced_sol_spot')
+                    buy_sell_imbalance=0,source='coinbase_advanced_sol_spot',product_id='SOL-USDC')
         class FixedCouncil:
             mode='rules'
             def decide(self,*args):
@@ -113,7 +106,7 @@ class LivePaperTests(unittest.TestCase):
             def market(self,*args,**kwargs):return market
         snap=Snapshot(timestamp=now,mint=SOL,price=100,liquidity_usd=10_000_000,
                       volume_24h_usd=50_000_000,account_checked=True,cluster_verified=True,
-                      source='coinbase_advanced_sol_spot')
+                      source='coinbase_advanced_sol_spot',product_id='SOL-USDC')
         with patch('alladin.engine.CoinbaseMarket',return_value=FakeCoinbase(bars,market)), \
              patch('alladin.engine.collect',return_value=snap), patch('alladin.engine.time.time',return_value=now-60) as clock:
             warm=svc.command('paper_tick',{},'warmup')
@@ -143,7 +136,7 @@ class LivePaperTests(unittest.TestCase):
                 type(self).calls+=1
                 return bars[:80] if type(self).calls==1 else bars
         market=dict(price=100,liquidity_usd=10_000_000,volume_24h_usd=50_000_000,
-                    buy_sell_imbalance=0,source='coinbase_advanced_sol_spot')
+                    buy_sell_imbalance=0,source='coinbase_advanced_sol_spot',product_id='SOL-USDC')
         class FakeCoinbase(Sequence):
             def market(self,*args,**kwargs):return market
         with patch('alladin.engine.CoinbaseMarket',FakeCoinbase), \

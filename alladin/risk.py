@@ -14,7 +14,10 @@ def security_checks(s,cfg,now):
     reasons = []
     if s.chain != cfg.chain:
         reasons.append('wrong_chain_or_mint')
-    if s.chain == 'solana':
+    if s.source=='coinbase_advanced_sol_spot':
+        if s.product_id!='SOL-USDC' or s.mint!=SOL:
+            reasons.append('unsupported_coinbase_product')
+    elif s.chain == 'solana':
         # On-chain controls only exist for SPL/Token-2022 mints.
         if not s.account_checked or not s.cluster_verified:
             reasons.append('unverified_onchain_data')
