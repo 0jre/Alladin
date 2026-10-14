@@ -2,12 +2,17 @@
   "chain": "solana",
   "execution": "paper",
   "timeframe_seconds": 900,
-  "initial_usdc": 10000,
-  "risk_per_trade": 0.003,
-  "max_position_fraction": 0.15,
-  "max_gross_fraction": 0.30,
-  "max_net_fraction": 0.20,
+  "initial_usdc": 250,
+  "sizing_mode": "available_balance",
+  "risk_per_trade": 0.02,
+  "max_open_risk": 0.02,
+  "max_position_fraction": 1.0,
+  "max_gross_fraction": 1.0,
+  "max_net_fraction": 1.0,
   "max_daily_loss": 0.02,
   "max_drawdown": 0.06,
-  "allowed_markets": ["spot", "perp"]
+  "allowed_markets": [
+    "spot"
+  ],
+  "min_reward_risk": 1.5
 }

@@ -1,0 +1,100 @@
+{
+  "scope": "Corrections for demo collection deadline and initial snapshot preparation",
+  "local_tests": {
+    "count": 159,
+    "passed": true,
+    "compile": true,
+    "diff_check": true,
+    "offline_wheel": true,
+    "isolated_wheel_import": true,
+    "wheel_sha256": "f67caaa798c1914ac4d003cd64f75ae7e9efd8d3802a5b1650cc2a074931717d"
+  },
+  "regressions": [
+    "slow DNS/response is bounded and late result discarded",
+    "nested HTTP requests share deadline",
+    "Retry-After must fit remaining budget",
+    "saturated network slots fail within budget",
+    "deadline failure cannot commit a cycle",
+    "first prepare after warmup accepts a newly collected snapshot",
+    "closed candles cached only until next bar",
+    "missing latest candle never cached",
+    "controlled external-session OPEN/CLOSE roundtrip accounts for fees"
+  ],
+  "live_demo": {
+    "requested_seconds": 60,
+    "collection_elapsed_seconds": 60.00049328000023,
+    "started_at": 1791991890.2727575,
+    "ended_at": 1791991950.273894,
+    "initial_cash_usdc": 250,
+    "final_cash_usdc": 250,
+    "final_equity_usdc": 250,
+    "closed_trades": 0,
+    "open_positions": [],
+    "fees_usdc": 0.0,
+    "observations": [
+      {
+        "elapsed_seconds": 1.1627999811025802e-05,
+        "observed_at": 1791991890.2727697,
+        "tick": {
+          "bars": 80,
+          "last_bar": 1791991800,
+          "next_action": "prepare_decision pode coletar snapshot atual; nenhum trade no aquecimento",
+          "result": "warmed_up"
+        },
+        "error": {
+          "type": "DataError",
+          "message": "Prazo total de coleta excedido; resposta tardia descartada"
+        },
+        "completed_elapsed_seconds": 15.62495412599992
+      },
+      {
+        "elapsed_seconds": 20.62543048999987,
+        "observed_at": 1791991910.8981905,
+        "error": {
+          "type": "DataError",
+          "message": "Prazo total de coleta excedido; resposta tardia descartada"
+        },
+        "completed_elapsed_seconds": 28.627460503999828
+      },
+      {
+        "elapsed_seconds": 33.62816191000002,
+        "observed_at": 1791991923.9009209,
+        "error": {
+          "type": "DataError",
+          "message": "Prazo total de coleta excedido; resposta tardia descartada"
+        },
+        "completed_elapsed_seconds": 41.631383457000084
+      },
+      {
+        "elapsed_seconds": 46.631770006999886,
+        "observed_at": 1791991936.9045293,
+        "error": {
+          "type": "DataError",
+          "message": "Prazo total de coleta excedido; resposta tardia descartada"
+        },
+        "completed_elapsed_seconds": 54.633811026999865
+      },
+      {
+        "elapsed_seconds": 59.634167329999855,
+        "observed_at": 1791991949.9069266,
+        "error": {
+          "type": "DataError",
+          "message": "Prazo total de coleta excedido; resposta tardia descartada"
+        },
+        "completed_elapsed_seconds": 60.000302663000184
+      }
+    ],
+    "audit": {
+      "valid": true,
+      "count": 1,
+      "head": "226acc81490d141c7a874086fdbb0c63a8618686740b4749e953d16ccb5c437a"
+    },
+    "result": "deadline respected; external sources timed out, so no trade authorized"
+  },
+  "limits": [
+    "A bounded timeout does not make external Coinbase/Solana RPC services available.",
+    "Controlled roundtrip uses fixtures and is not market performance.",
+    "No wallet connections, inference API keys or embedded model calls.",
+    "Local tests do not establish GitHub Actions success."
+  ]
+}

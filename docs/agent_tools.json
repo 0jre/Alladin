@@ -2,22 +2,66 @@
   {
     "type": "function",
     "name": "alladin_status",
-    "description": "Read the paper portfolio, open positions, pending decision and circuit breakers from GET /v1/status. Market data and live orders come only from Coinbase.",
-    "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": false},
+    "description": "Read the Solana spot paper portfolio, latest decision, open positions and circuit breakers from GET /v1/status.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "strict": true
+  },
+  {
+    "type": "function",
+    "name": "alladin_performance",
+    "description": "Read net closed-trade statistics, uncertainty, sample adequacy and the 900-entry research target from GET /v1/performance. It does not guarantee returns.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
     "strict": true
   },
   {
     "type": "function",
     "name": "alladin_command",
-    "description": "Call POST /v1/commands on the authenticated Alladin backend. The only external venue is Coinbase. Never executes a shell command or accepts a wallet secret. Supply a unique idempotency key per logical request.",
+    "description": "Call the authenticated Alladin backend. It only supports Coinbase-only SOL-USDC spot paper cycles and public market collection. It never connects a wallet, signs, or sends a transaction. Supply a unique idempotency key per logical request.",
     "parameters": {
       "type": "object",
       "properties": {
-        "command": {"type": "string", "enum": ["ingest", "analyze", "evaluate", "halt", "finalize", "universe", "admit", "watch", "unwatch", "coinbase_products", "coinbase_candles", "coinbase_quote", "coinbase_preview", "coinbase_order", "coinbase_connect", "coinbase_connection", "market_radar", "market_prices", "desks", "platforms"]},
-        "args": {"type": "object", "description": "Arguments exactly matching GET /v1/contract; use an empty object for commands with no arguments."},
-        "idempotency_key": {"type": "string"}
+        "command": {
+          "type": "string",
+          "enum": [
+            "paper_tick",
+            "ingest",
+            "analyze",
+            "evaluate",
+            "halt",
+            "finalize",
+            "universe",
+            "admit",
+            "watch",
+            "unwatch",
+            "prepare_decision",
+            "submit_decision",
+            "execution_check"
+          ]
+        },
+        "args": {
+          "type": "object",
+          "description": "Arguments exactly matching GET /v1/contract; use an empty object for commands with no arguments."
+        },
+        "idempotency_key": {
+          "type": "string"
+        }
       },
-      "required": ["command", "args", "idempotency_key"]
+      "required": [
+        "command",
+        "args",
+        "idempotency_key"
+      ],
+      "additionalProperties": false
     },
     "strict": false
   }

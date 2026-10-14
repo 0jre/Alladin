@@ -1,0 +1,2 @@
+# Portfolio Skill
+Read mandate, portfolio and config. Respect stop-loss budget, remaining daily loss capacity, maximum drawdown, cash, position/exposure caps and cooldown. Full-balance sizing concentrates exposure and does not mean the loss budget is unlimited. Review recorded realized outcomes for context; a short winning streak is neither calibration nor permission to increase risk. Never reset losses or select only successful trades.

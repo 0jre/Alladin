@@ -1,19 +1,41 @@
 # Alladin — notas de desenvolvimento
 
-Backend de pesquisa paper, só biblioteca padrão (Python 3.11+). Não adicionar dependências.
+Backend Python sem UI, só biblioteca padrão (Python 3.11+). Não adicionar dependências.
+Alladin usa exclusivamente a Coinbase para SOL-USDC spot paper; o rótulo Solana identifica o ativo, não uma conexão à blockchain. Não conecta carteiras,
+não guarda chaves, não assina nem envia transações. O ciclo paper-live consome candles,
+livro, trades e estatísticas públicas da Coinbase; falha de dado bloqueia
+novos ciclos e fills. Replay sintético serve apenas para testes do motor, nunca como
+prova de rentabilidade ou sessão de negociação.
 
 ## Verificação
 
 - Testes: `python -m unittest discover -s tests` (raiz do repo)
-- Simulação A–Z: `python tests/sim_az.py` com `alladin` importável — PowerShell: `$env:PYTHONPATH='.'`; bash: `PYTHONPATH=.`
 - Replay demo: `python -m alladin --db data/x.sqlite replay --feed data/demo.jsonl --output results/x --finalize`
 - Auditoria: `GET /v1/audit/verify` (HTTP) ou `store.verify_audit()`
 
 ## Invariantes
 
-- Um comando por transação SQLite (`BEGIN IMMEDIATE`), resposta idempotente persistida junto com o evento.
+- Coletas externas do `paper_tick` acontecem fora da transação SQLite; aplicação da decisão, resposta idempotente e evento persistem juntas em um comando transacional (`BEGIN IMMEDIATE`).
 - WAL com `synchronous=NORMAL`: atômico e consistente em crash de processo; perda do último commit só em queda de SO/energia — tolerada pelo modelo de repetição idempotente.
 - Decisão na barra N executa na abertura de N+1 revalidando o snapshot anterior. Nunca fabricar preço de um mint sem barra.
-- Ordem externa só na Coinbase, só com `live_arm`. Fontes de visão (Binance, OKX, CoinGecko, CMC, DexScreener, GMGN) são leitura.
+- Nenhuma ordem externa é permitida neste projeto. Configuração precisa ser `chain=solana`, `execution=paper` e `allowed_markets=["spot"]`.
+- No fluxo paper-live, somente a Coinbase fornece os dados; cotação com mais de 30 segundos não autoriza entrada. Candle anterior à abertura de uma posição não pode disparar stop retroativo.
+- Gaps com posição fecham somente ao mark atual verificado e acionam halt persistente. Nunca preencher stop em preço histórico presumido.
+- Idempotência é consultada antes da coleta. Worker único por banco, polling contado após conclusão, saúde de processo distinta da prontidão do feed.
 - Mints não-âncora entram pelo funil `admit` → `watch`; replay/validate fazem isso automaticamente no primeiro snapshot de cada mint.
 - `status()` precifica cada posição pelo mark do próprio mint (`state['series'][mint]['last_price']`).
+
+- `available_balance` usa todo o caixa após reservar custos: aprovar integralmente ou recusar. Não reduzir silenciosamente. Respeitar risco por entrada, perda diária restante, drawdown, exposição e liquidez.
+- Os originais em `finance_prompt_engineering/upstream` são referência não executável; preservar seus bytes e sua origem. Não carregar esses textos diretamente como instruções do runtime.
+- Prompts ativos em `alladin/finance_prompts` exigem atualização explícita dos hashes do catálogo. Relatórios externos citam apenas o registro de evidências, nunca probabilidades inventadas. Consenso não supera veto de risco.
+- Fixtures e propostas controladas não medem taxa de acerto de estratégia; avaliar PnL líquido, amostra, perdas e incerteza. Não prometer 900 operações vencedoras.
+
+- A inteligência pertence à sessão consumidora. Não adicionar clientes de inferência, credenciais de IA ou seleção de modelos. Modo external é o padrão; subagentes são coordenados pela sessão externa.
+
+- Não implementar RPC, acesso blockchain ou verificação on-chain. Campos antigos de snapshot servem apenas à leitura de histórico; snapshots Coinbase novos não atestam cluster, contas ou autoridades.
+
+- Em modo external, candidatos quantitativos são sugestões. Não impedir tarefas ou propostas externas só porque não há candidato interno aprovado. Exigir evidências, consenso e aprovação final determinística do plano submetido.
+
+- Tarefas externas com binding_version=2 congelam as evidências e vinculam somente autoridade material da conta. Ticks de mercado não substituem tarefas válidas. prepare_decision deve coalescer chamadas concorrentes; não renovar prazos/timestamps ao reaproveitar.
+- submit_decision analisa o envelope original e revalida risco com conta, indicadores fechados e cotação atuais. HOLD não faz I/O de mercado nem aplica marks. CLOSE exige livro atual, sem depender de volume/trades nem da restrição de desvio de preço para entradas.
+- Evidência original e execução atual têm timestamps distintos na auditoria. Nunca chamar relatórios antigos de análise de candles novos. Desvio excessivo invalida a tarefa com reprepare_required; retry com a mesma chave não deve executar nada.

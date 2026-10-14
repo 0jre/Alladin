@@ -1,0 +1,26 @@
+[Unit]
+Description=Alladin Solana paper backend
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=alladin
+Group=alladin
+WorkingDirectory=/opt/alladin
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=/etc/alladin/alladin.env
+StateDirectory=alladin
+ExecStart=/usr/bin/python3 -m alladin --config /opt/alladin/config.json --db /var/lib/alladin/paper-250.sqlite serve --paper-worker --poll-seconds 30
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=60
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/alladin
+
+[Install]
+WantedBy=multi-user.target

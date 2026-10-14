@@ -1,179 +1,124 @@
-# Alladin — pesquisa autônoma com a Coinbase como única fonte
+# Alladin
 
-Servidor de pesquisa com decisões autônomas e execução simulada. Sem frontend e sem comandos de shell. As interfaces são JSON HTTP, CLI e um cliente Python. Mercado e execução externa passam só pela Coinbase: corretora Advanced Trade e swaps em Ethereum, Base e Arbitrum.
+O módulo [Alladin Finance Prompt Engineering](finance_prompt_engineering/README.md) incorpora o repositório solicitado sem `.git`, preserva os originais e fornece uma biblioteca ativa de prompts para os agentes da sessão externa. Há cinco papéis com evidências citáveis, contestação, plano estruturado e revalidação determinística de risco.
 
-O simulador paper continua local. SOL cotado na corretora é um produto Coinbase, não uma leitura direta da rede Solana. O padrão é paper. `shadow` bloqueia a entrada se a cotação cair. `live` só existe com `live_arm`, allowlist e teto. O servidor não é um programa on-chain.
+`GET /v1/prompts`, `GET /v1/prompts/{role}` e MCP `prompts/list`/`prompts/get` disponibilizam a biblioteca revisada. `GET /v1/performance` e `python -m alladin performance` mostram estatísticas líquidas e incerteza. A meta de 898–899 acertos em 900 operações é apenas um critério de pesquisa, não uma capacidade demonstrada nem promessa de lucro.
 
-## Executar agora
+Backend Python de pesquisa e paper trading **exclusivamente com dados da Coinbase**, no produto spot SOL-USDC. Não há UI, conexão com Phantom/OKX, chave de carteira, assinatura ou envio de transações. Os agentes chamam comandos HTTP/MCP; o backend coleta evidências, calcula sinais, valida risco e registra decisões/fills simulados.
 
-Python 3.11+, biblioteca padrão; não precisa instalar dependências para rodar diretamente da pasta.
+## O que significa paper-live
+
+`paper-live` usa candles fechados, livro, trades recentes e volume de 24 horas do mercado spot SOL-USDC da Coinbase Advanced Trade. O primeiro comando só aquece os indicadores; os próximos processam cada barra fechada uma vez. Barras faltantes, feed atrasado, snapshot stale ou erro de provedor interrompem o ciclo sem preencher retroativamente. A negociação acompanha o ativo SOL da Solana, enquanto os preços refletem o mercado centralizado da Coinbase.
+
+O backend fornece os mesmos sinais, filtros e limites de risco configurados para o fluxo paper do Alladin. O saldo inicial padrão é **250 USDC**. As entradas e saídas são registradas localmente contra o midpoint atual da Coinbase, somando as taxas/slippage configuradas. Isso não é uma ordem Coinbase, uma cotação executável nem garantia de que um fill real teria esse preço. Não use os resultados como evidência de rentabilidade.
+
+Os endpoints públicos da Coinbase podem cachear ou limitar respostas; snapshots usam `Cache-Control: no-cache`. Para serviço contínuo, configure provedores estáveis, supervisão, alertas e validação econômica independente.
+
+## Iniciar uma sessão paper
+
+Requer Python 3.11+ e nenhuma dependência de terceiros:
 
 ```bash
 python3 -m unittest discover -s tests -v
-python3 -m alladin generate-demo --bars 600
-python3 -m alladin --db data/nova_pesquisa.sqlite replay --feed data/demo.jsonl --output results/nova_pesquisa --finalize
+python3 -m alladin --config config.json --db data/paper-250.sqlite paper-tick
+python3 -m alladin --config config.json --db data/paper-250.sqlite serve --paper-worker --poll-seconds 30
 ```
 
-`data/demo.jsonl` é explicitamente sintético, inclusive oracle, liquidez, autoridades e funding. Os resultados em `results/demo` são exemplos de execução, não evidência de rentabilidade. O replay finalizado fecha posições ao último preço e encerra aquela sessão. Use um banco diferente para uma nova pesquisa/configuração. Para continuar recebendo barras, omita `--finalize`. Mints além do âncora entram pelo mesmo funil no replay e no validate: o primeiro snapshot de cada mint é classificado com `admit` e armado com `watch` antes do ingest; um mint inelegível aborta a leitura.
+O padrão agora é 250 USDC. O primeiro `paper-tick` tende a retornar `warmed_up`. `serve --paper-worker` mantém a API e a coleta no mesmo processo; `paper-live` inicia só o worker. Para uma conta paper nova, use outro arquivo SQLite. O comando `generate-demo` e `replay` usam dados sintéticos e servem somente para testar o motor, nunca como replay de mercado real.
 
-## Subir o servidor
+O perfil padrão `sizing_mode=available_balance` usa todo o saldo disponível, descontando o custo da entrada. A perda estimada até o stop, incluindo custos de ida e volta, precisa caber em 2% por operação, no orçamento diário restante de 2% e no drawdown de 6%. Uma entrada que não cabe nesses limites é recusada integralmente. Após a venda, o próximo tamanho usa o saldo atualizado. O perfil anterior continua disponível com `sizing_mode=risk_budget`.
+
+Esta mudança de perfil exige um banco novo; não reconfigure silenciosamente uma sessão existente. Para continuar uma carteira anterior, transfira o saldo e os limites diários já consumidos com um evento de auditoria que referencie a sessão de origem.
+
+Leia o [guia de operação](docs/operations.md) para persistência, readiness, supervisão Linux, container, gaps e retomada. `GET /health` confirma processo ativo; `GET /ready` verifica prontidão de coleta e worker. O template systemd está em `deploy/alladin.service`.
+
+## Agentes da própria sessão
+
+O padrão é `--agents external`. Alladin não carrega modelos, não realiza inferência e
+não recebe credenciais de provedores de IA. ChatGPT Work, Codex, Claude/CLI, Grok e
+outros consumidores fazem a análise na própria sessão e chamam as ferramentas.
+
+1. `paper_tick` aquece/atualiza o feed e administra stops e bloqueios existentes.
+2. `prepare_decision` retorna evidências, hashes, schemas e instruções dos cinco papéis.
+3. A sessão coordena mercado/Solana/fluxo sem compartilhar respostas entre eles;
+   depois fornece os três pareceres ao contestador e a revisão ao gestor.
+4. `submit_decision` recebe os quatro pareceres e o plano do gestor, vinculados ao
+   `task_id` e `evidence_sha256`. O backend valida contratos, consenso e risco.
+5. Em paper-live, coleta nova cotação, verifica desvio/frescor e registra o fill paper;
+   em replay, uma proposta aprovada fica para a abertura da próxima barra.
+
+Sem consumidor externo executando esse ciclo, o worker coleta dados e aguarda;
+ele não cria agentes nem raciocina sozinho. Subagentes são criados pela sessão
+consumidora conforme os recursos disponíveis nela. A independência dos pareceres
+é uma obrigação do coordenador: quatro objetos JSON não provam quatro agentes.
+Veja [o protocolo de integração](docs/external-sessions.md).
+
+`--agents rules` permanece uma referência quantitativa explícita para pesquisa.
+Bancos antigos preservam o modo original: use `--agents rules` para reabri-los.
+Não altere o modo ou zere saldos de uma sessão existente silenciosamente.
+
+## Interface para agentes
+
+Servidor HTTP autenticado, vinculado a `127.0.0.1`:
 
 ```bash
-# Crie este token no próprio servidor; não compartilhe publicamente.
 export LAB_API_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
 python3 -m alladin --db data/backend.sqlite serve --port 8080
 ```
 
-Escuta em `127.0.0.1:8080`. Para acesso remoto, configure um proxy TLS autenticado e limites de requisição. Esta implementação usa HTTP da biblioteca padrão e não foi validada para produção pública. GETs de saúde/status continuam disponíveis durante chamadas LLM; só um comando é executado por vez. Um comando concorrente recebe `503 command_busy`, devendo repetir a mesma chave de idempotência. Cada instância deve usar seu próprio banco; não execute vários workers para uma mesma sessão.
+O token HTTP protege acesso ao backend; não é uma credencial de inferência. Via MCP stdio não há token. O cliente HTTP envia `Authorization: Bearer <LAB_API_TOKEN>`, `Content-Type: application/json` e `Idempotency-Key` em `POST /v1/commands`. Endpoints disponíveis:
 
-`POST /v1/commands` exige `Authorization: Bearer <LAB_API_TOKEN>`, `Content-Type: application/json` e `Idempotency-Key`. O corpo é sempre:
-
-```json
-{"command":"analyze","args":{}}
-```
-
-Exemplo via cliente CLI, sem montar comandos de shell pelo agente:
-
-```bash
-python3 -m alladin call --request docs/request_analyze.json --key analysis-0001
-```
-
-O comando analyze precisa de barras já ingeridas. Um teste de conectores read-only é:
-
-```bash
-python3 -m alladin call --request docs/request_collect.json --key products-0001
-```
-
-Cada nova coleta usa uma chave nova; uma repetição com a mesma chave retorna a resposta anterior, inclusive seu timestamp. A mesma chave com outro corpo é recusada. Mutações, resposta idempotente e evento são persistidos atomicamente em SQLite WAL. O WAL usa `synchronous=NORMAL`: commits continuam atômicos e consistentes; só uma queda de sistema operacional ou energia pode perder a última transação confirmada — e com ela o registro de idempotência, então a repetição com a mesma chave reexecuta limpa. Repetir a última barra com o mesmo conteúdo e outra chave também não executa de novo. Barras fora de ordem, lacunas ou revisão de uma barra processada são recusadas.
-
-## Modo de agentes de IA
-
-```bash
-# Defina os valores no ambiente de execução por secret manager ou shell local.
-export OPENAI_API_KEY="<sua chave da API, não uma chave de carteira>"
-export OPENAI_MODEL="<modelo que suporte Responses API e Structured Outputs>"
-python3 -m alladin --agents llm --max-llm-calls 200 --db data/ia.sqlite serve
-```
-
-O servidor possui quatro papéis:
-
-1. **Mercado:** regime, tendência, contexto de prazo maior, reversão e volatilidade.
-2. **On-chain:** evidências de mint SPL, autoridades, liquidez, concentração e lacunas.
-3. **Contestação:** procura sinais contrários, custos, funding adverso e problemas nos dados.
-4. **Gestor:** retorna uma proposta estruturada de LONG, SHORT, HOLD ou CLOSE.
-
-As chamadas usam Responses API com JSON Schema, `store=false` e limite de saída. Relatórios são validados localmente, inclusive referências a chaves de evidência. O gestor pode selecionar candidatos quantitativos e ajustar stop/take/horizonte dentro do contrato, ou se abster. Ele não escolhe o notional, não altera limites, não recebe uma chave de carteira e não executa código. Os agentes recebem dados já coletados pelo backend; não têm acesso irrestrito a ferramentas externas. Justificativas são resumos auditáveis, não raciocínio interno privado.
-
-Falhas, recusas, contratos inválidos, evidências inexistentes e esgotamento do orçamento produzem HOLD com erro registrado. Não há fallback silencioso para regras. `--max-llm-calls` limita chamadas **por processo**, não dólares, e reinicia ao reiniciar o processo. Um ciclo completo pode consumir quatro chamadas. Configure também um limite financeiro no provedor. As chamadas reais ao modelo não foram executadas neste ambiente; os contratos e falhas foram testados com respostas controladas.
-
-O modo padrão `--agents rules` é uma referência quantitativa reproduzível, **não IA**. O status e todos os relatórios identificam o modo. O servidor não se mantém ativo ao fechar seu processo; para operação contínua é necessário um supervisor de serviço.
-
-## MCP
-
-O chat fala com o Alladin por MCP, no stdio. Cursor, Claude e os modos com computador sandbox descobrem as ferramentas sozinhos. A ordem continua na Coinbase. O HTTP em `127.0.0.1` fica para o sandbox e para clientes que já usam idempotência.
-
-```bash
-python -m alladin mcp
-```
-
-No Cursor, o arquivo `.cursor/mcp.json` deste projeto sobe esse comando. Se uma ferramenta devolver `action_request`, o chat mostra o link Connect account.
-
-## Endpoints e comandos para agentes externos
-
-| Interface | Resultado |
+| Endpoint/comando | Uso |
 |---|---|
-| `GET /health` | Saúde do processo, sem dados de carteira |
-| `GET /v1/status` | Saldo fictício, posições, proposta pendente, bloqueios |
-| `GET /v1/contract` | Contrato de comandos |
-| `GET /v1/audit?limit=100` | Eventos de análise, decisão e execução |
-| `coinbase_products` | Produtos públicos da Advanced Trade |
-| `coinbase_candles` | Candles públicos da corretora |
-| `coinbase_quote` | Cotação de swap na Trade API; não executa |
-| `coinbase_preview` / `coinbase_order` | Preview, e ordem spot só com `live_arm` |
-| `coinbase_connect` | Pedido de ação com o link Connect account; não devolve token |
-| `market_radar` / `market_prices` | Ranking, classificação, sinais, rastreador, alpha e copy observado |
-| `desks` / `platforms` | Mesas de análise e contrato para ChatGPT, Claude, Work e sandbox |
-| `ingest` | Barra fechada + snapshot → conselho → risco → ação pendente |
-| `analyze` | Análise dos dados armazenados, sem agendar operação |
-| `evaluate` com `proposal` | Validação de risco, sem executar |
-| `halt` | Bloqueio persistente; fecha na próxima barra válida |
-| `finalize` | Encerra pesquisa e liquida ficticiamente ao último preço |
+| `GET /health` | Saúde do processo, sem dados da carteira paper |
+| `GET /v1/status` | Saldo, posições, última decisão e bloqueios paper |
+| `GET /v1/contract` | Contrato de endpoints e comandos |
+| `GET /v1/audit?limit=100` | Eventos de decisão e execução simulada |
+| `GET /v1/audit/verify` | Verifica o encadeamento de hashes dos eventos |
+| `paper_tick` | Coleta read-only de mercado SOL-USDC Coinbase e processa um ciclo paper futuro |
+| `ingest` | Injeta barra fechada + snapshot Solana validados; útil para feeds próprios/testes |
+| `prepare_decision`, `submit_decision` | Contexto para a sessão e validação da decisão externa |
+| `analyze`, `evaluate` | Análise e validação de risco, sem enviar ordens |
+| `halt`, `finalize` | Para novas entradas ou fecha a sessão paper |
 
-`docs/agent_tools.json` fornece descritores de ferramentas para registrar em um agente. `docs/tools_adapter.py` contém os wrappers Python que chamam o backend. Não existem endpoints para `exec`, shell, alteração de config, assinatura ou envio de transações. Nenhuma URL de endpoint é escolhida pelo modelo.
+Exemplo de corpo: `{"command":"paper_tick","args":{}}`. A chave de idempotência deve ser nova por ciclo lógico; repetir a mesma chave e mesmo conteúdo devolve a resposta persistida. Uma chave reutilizada com conteúdo diferente é recusada.
 
-## Lógica quantitativa e controle de risco
+MCP stdio não exige chave ou token de IA. Está disponível com `python3 -m alladin mcp` e oferece os mesmos comandos paper/status/auditoria. Não há comandos para carteira, order routing, shell ou configuração dinâmica.
 
-- Features causais: EMAs, inclinação, RSI por médias simples, ATR por médias simples, ADX com suavização Wilder, MACD, bandas de Bollinger, VWAP aproximado, eficiência direcional, momentum e volume relativo.
-- Contexto de prazo maior: grupos completos de quatro barras, ancorados ao horário UTC. Barras parciais são excluídas.
-- Estratégias: tendência com confluência, breakout com volume e reversão à média em lateralização. Choques geram abstenção.
-- VaR/CVaR históricos de uma barra: estatísticas descritivas de retornos passados; não são estimativas confiáveis de cauda futura.
-- Risco por operação e risco aberto agregado; exposição bruta/líquida combinada de spot e perp. Não trata posições no mesmo SOL como diversificação.
-- Dimensionamento limitado por saldo, distância ao stop, custos, participação estimada na liquidez e limites da carteira.
-- Relação ganho/risco estimada líquida de custos; funding adverso pode bloquear perp. Confiança do agente é um score não calibrado, nunca uma probabilidade usada em Kelly.
-- Bloqueio por drawdown, perda diária UTC, cooldown após perdas, preço distante da referência, oracle inválido e dados incompletos.
-- Spot não vende a descoberto. Perp só entra com oracle e funding explícitos, market verificado e margem suficiente.
+## Modelo quantitativo e limites
 
-Todos os parâmetros em `config.json` são hipóteses para pesquisa, não parâmetros recomendados para dinheiro real. Alterar configuração de sessão existente é recusado; use outro banco.
+O motor calcula indicadores causais (EMAs, RSI, ATR, ADX, MACD, Bollinger, VWAP aproximado, eficiência direcional, momentum e volume relativo), compara estratégias de tendência/breakout/reversão e passa propostas pelo risco determinístico. O risco considera stops, custos estimados, liquidez, volume, exposição, perdas diárias, drawdown e qualidade/frescor do snapshot. Spot não vende a descoberto.
 
-## Dados
+Em `paper-live`, a decisão usa candle já fechado e evidência atual do livro/trades Coinbase; o fill paper usa o midpoint atual mais custos configurados. O caminho `ingest` preserva a semântica histórica do replay: decisão na barra N e entrada elegível na abertura de N+1 com revalidação. Os dois fluxos não devem ser misturados na mesma sessão.
 
-A execução externa é a Coinbase. `coinbase_products` e `coinbase_candles` leem a Advanced Trade sem chave. `coinbase_quote` pede a cotação de swap em Ethereum, Base ou Arbitrum e não executa. `coinbase_order` só envia ordem spot com `live_arm` e `COINBASE_JWT`, ou com a sessão OAuth gravada no processo.
+O midpoint de uma exchange não garante execução em uma DEX Solana. O simulador não mede impacto real de ordem, profundidade roteável, MEV, falhas de RPC, prioridade, congestionamento, taxa de rede ou diferenças entre o livro Coinbase e uma rota on-chain. Perp e live execution estão desativados. Testes com fixtures verificam o software, não rentabilidade nem resposta ao mercado real.
 
-`market_radar` e `market_prices` leem Binance, OKX, CoinGecko, CoinMarketCap, DexScreener e GMGN. Eles montam ranking, tabela de classificação, sinais, rastreador, alpha e candidatos de copy trading. Essa leitura não envia ordem. CoinMarketCap usa `CMC_API_KEY` no processo. CoinGecko aceita `COINGECKO_API_KEY` opcional.
-
-`coinbase_connect` devolve um `action_request` com o link Connect account em `https://login.coinbase.com/oauth2/auth`. O chat mostra o link. O token fica no processo local e não volta no JSON. Defina `COINBASE_OAUTH_CLIENT_ID`, `COINBASE_OAUTH_REDIRECT_URI` e, para a troca do code, `COINBASE_OAUTH_CLIENT_SECRET`. O redirect local esperado pelo servidor é `/oauth/coinbase/callback`.
-
-`platforms` entrega o contrato de ferramenta para Cursor, ChatGPT, ChatGPT Work, Claude, Claude Work e computador sandbox. `desks` lista as mesas do Alladin. As categorias seguem a organização pública de [awesome-claude-finance-prompts](https://github.com/devfinprojects/awesome-claude-finance-prompts); o texto é do Alladin e obriga o uso destas ferramentas.
-
-O servidor não baixa sozinho o histórico. Um feed confiável chama `ingest` com barras fechadas. Não se inventa volume de uma barra a partir de volume de 24 horas. Flags do snapshot são evidências do chamador autenticado.
-
-## Formato do feed
-
-Veja `docs/feed.md`. Uma linha JSONL tem `candle` e `snapshot`; os mesmos objetos servem como args de ingest. Na v0.2 o intervalo é fixo e uniforme, padrão de 15 minutos. Só são aceitas barras fechadas no horário UTC atual. Feeds precisam preservar os snapshots históricos disponíveis naquele instante; coletar dados de hoje e colocá-los em barras antigas causaria lookahead.
-
-## Execução simulada
-
-A decisão ocorre no fechamento da barra N e a entrada/saída por agente só ocorre na abertura de N+1, após revalidar risco usando o snapshot anterior. O snapshot de N+1 não autoriza retroativamente essa entrada. Ordens bloqueadas não são reenviadas automaticamente.
-
-Stops, take profits e expiração são avaliados nas barras; se stop e take podem ocorrer na mesma barra, o stop tem prioridade. Gaps adversos preenchem ao preço de abertura. Trailing stop é atualizado depois do fechamento e só vale a partir da próxima barra. Custos são debitados de forma explícita; slippage é um custo hipotético em bps, não uma reconstrução de roteamento real. Taxa fixa simula custo por operação em USDC.
-
-Perp usa uma aproximação de margem isolada com manutenção fixa e liquidação aproximada, não uma réplica de Drift/Adrena. Funding_rate é a taxa efetivamente realizada uma vez naquela barra: positivo significa long paga e short recebe. Expected_funding_hourly no snapshot é informação anterior para decisão. A perda isolada é limitada ao colateral no modelo; seguros, cross-margin, oracles reais, keeper fees, liquidações parciais e mecanismos específicos do protocolo não estão reproduzidos.
-
-Halt não inventa execução em um preço antigo: bloqueia imediatamente novas entradas e aguarda próxima barra válida para fechar posições fictícias. Finalize é explicitamente um encerramento de pesquisa pelo último preço observado. Não existe reset automático de circuit breaker.
-
-## Avaliar períodos e custos
+## Verificação
 
 ```bash
-python3 -m alladin validate --feed data/demo.jsonl --folds 3 --output results/validacao_nova
+python3 -m unittest discover -s tests -v
+python3 -m alladin contract
 ```
 
-Cria blocos cronológicos com 80 barras anteriores de warmup, conta independente por bloco e custos base/2x. A primeira entrada possível é na primeira barra de avaliação. Não otimiza parâmetros nesses blocos. Este comando valida o modo rules; avaliação LLM fora da amostra ainda está pendente. Para testar vantagem é necessário histórico real com snapshots contemporâneos e amostra muito maior.
+O servidor usa SQLite WAL e uma cadeia de hash para auditoria. O HTTP da biblioteca padrão deve permanecer atrás de uma camada TLS/autenticação/limite de tráfego para acesso remoto. Os eventos ainda exigem backups e retenção operacional.
 
-Export gera `summary.json`, `equity.csv`, `trades.csv` e `audit.jsonl`. O estado guarda até 500 barras, 200 trades recentes e 2.000 pontos de curva para limitar o contexto; o banco mantém o histórico de eventos e export o utiliza. O arquivo de eventos cresce: retenção, rotação, backups e métricas de infraestrutura ainda precisam ser configurados.
+Para observar uma janela limitada, use `demo-live --seconds 60 --output results/demo`.
+O orçamento de coleta cobre DNS, leitura e retries; os comandos de mercado têm
+limite total de 45 segundos e a demonstração também respeita o tempo restante da
+janela. A sessão externa continua responsável por analisar e submeter decisões.
 
-## Validação e limites desta entrega
+Antes de repetir uma sessão bloqueada, rode `python -m alladin doctor` ou chame
+`alladin_diagnostics` via MCP. O resultado separa disponibilidade das fontes,
+fase de rede e compatibilidade econômica dos planos padrão. `proxy_tunnel`
+indica falha anterior à resposta da API, que exige verificar o acesso do ambiente
+aos hosts públicos. Limites de risco não são relaxados para produzir negociações.
 
-Testes locais verificam causalidade, entrada na barra seguinte, revalidação com dados anteriores, idempotência HTTP/SQLite, restauração, gates de risco, contabilidade, funding, autenticação e falhas do modelo. O replay sintético verifica o ciclo completo sem fundos ou chaves.
+O runtime não contém cliente RPC nem configuração `SOLANA_RPC_URL`. A fonte externa única é a Coinbase. O protocolo `external-session-v2` usa o papel `quality` no lugar de `onchain`; o bundle ativo é 2.1.0. Campos on-chain de snapshots antigos são compatibilidade de histórico e não aparecem no envelope de evidências.
 
-O acesso direto às APIs externas retornou HTTP 403 no ambiente de construção. Os conectores foram verificados contra documentação e fixtures, **não contra dados ao vivo**. A IA usa um cliente implementado e testes controlados, **não foi validada economicamente com um modelo real**.
+O perfil demo agora declara retorno/risco líquido mínimo de **1,5**, mantendo
+**2%** de perda estimada por operação e por dia e **6%** de drawdown. Os custos e
+alvos não foram alterados. Essa política precisa de avaliação fora da amostra;
+não demonstra rentabilidade. Carteiras existentes usam revisão explícita auditada
+com `revise-policy --from-config`, preservando saldo e perdas já consumidas.
 
-Para completar um sistema de produção faltam: feed OHLCV/oracle/funding verificado, validação real fora da amostra, revisão independente, integração específica dos protocolos, custódia/assinatura com permissões, reconciliação on-chain e observabilidade de operação. Esta entrega não é um trader de fundos reais pronto para ativar.
-
-## Fontes usadas na implementação
-
-- https://solana.com/docs/rpc/http/getaccountinfo
-- https://solana.com/docs/rpc/http/gettokensupply
-- https://solana.com/docs/rpc/http/gettokenlargestaccounts
-- https://solana.com/docs/rpc/http/getgenesishash
-- https://docs.dexscreener.com/api/reference
-- https://developers.jup.ag/docs/api-reference/swap/v1/quote
-- https://developers.openai.com/api/docs/guides/structured-outputs
-- https://developers.openai.com/cookbook/examples/structured_outputs_intro
-
-Implementação própria; não é um fork nem incorpora o código dos repositórios pesquisados anteriormente.
-
-## Pesquisa de projetos e procedência
-
-Veja [seleção técnica](docs/upstream-research.md). As referências não são dependências incorporadas: esta versão mantém implementação própria.
-
-A auditoria agora encadeia eventos com SHA-256 e valida via `GET /v1/audit/verify`. Retenha o `head` fora do banco para detectar reescrita completa; hashes não são assinaturas. Bancos antigos sem selos falham na validação: use um banco novo para esta versão.
+A checagem explícita `execution_check` permite validar OPEN/CLOSE paper com preços atuais, mantendo o risco. Ela é rotulada como teste controlado e não integra estatísticas de estratégia. Consulte [operação](docs/operations.md). Posições também são acompanhadas por mark entre candles quando o worker/consumidor está ativo.

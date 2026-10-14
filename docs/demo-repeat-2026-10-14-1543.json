@@ -1,0 +1,74 @@
+{
+  "source_commit": "d8a3f9f73d1ab127a98965494521d6535493be2d",
+  "account_continuity": "Reused results/demo-250-deadline-fixed/session.sqlite; no reset or transfer",
+  "execution": "Solana spot paper only",
+  "started_at": 1791992576.7657273,
+  "ended_at": 1791992636.7670171,
+  "requested_seconds": 60,
+  "collection_elapsed_seconds": 60.00054182900021,
+  "initial_equity_usdc": 250,
+  "final_equity_usdc": 250,
+  "cash_usdc": 250,
+  "fees_usdc": 0.0,
+  "closed_trades": 0,
+  "open_positions": [],
+  "net_equity_change_usdc": 0,
+  "observations": [
+    {
+      "elapsed_seconds": 2.0110000150452834e-05,
+      "observed_at": 1791992576.7657485,
+      "stage": "paper_tick",
+      "error": {
+        "type": "DataError",
+        "message": "Prazo total de coleta excedido; resposta tardia descartada"
+      },
+      "completed_elapsed_seconds": 8.002098543000102
+    },
+    {
+      "elapsed_seconds": 13.002542153000377,
+      "observed_at": 1791992589.7682726,
+      "stage": "paper_tick",
+      "error": {
+        "type": "DataError",
+        "message": "Prazo total de coleta excedido; resposta tardia descartada"
+      },
+      "completed_elapsed_seconds": 21.004413647000092
+    },
+    {
+      "elapsed_seconds": 26.004795934000413,
+      "observed_at": 1791992602.7705252,
+      "stage": "paper_tick",
+      "error": {
+        "type": "DataError",
+        "message": "Prazo total de coleta excedido; resposta tardia descartada"
+      },
+      "completed_elapsed_seconds": 34.006343368000216
+    },
+    {
+      "elapsed_seconds": 39.006724340000346,
+      "observed_at": 1791992615.7724535,
+      "stage": "paper_tick",
+      "error": {
+        "type": "DataError",
+        "message": "Prazo total de coleta excedido; resposta tardia descartada"
+      },
+      "completed_elapsed_seconds": 47.008369849000246
+    },
+    {
+      "elapsed_seconds": 52.00872691900031,
+      "observed_at": 1791992628.774456,
+      "stage": "paper_tick",
+      "error": {
+        "type": "DataError",
+        "message": "Prazo total de coleta excedido; resposta tardia descartada"
+      },
+      "completed_elapsed_seconds": 60.00032428200029
+    }
+  ],
+  "audit": {
+    "valid": true,
+    "count": 1,
+    "head": "226acc81490d141c7a874086fdbb0c63a8618686740b4749e953d16ccb5c437a"
+  },
+  "outcome": "Five paper_tick attempts exceeded the read deadline in this environment. No verified fresh context, no external decision submission and no fills. This does not establish an outage at Coinbase or Solana RPC."
+}

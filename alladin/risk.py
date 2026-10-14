@@ -14,7 +14,10 @@ def security_checks(s,cfg,now):
     reasons = []
     if s.chain != cfg.chain:
         reasons.append('wrong_chain_or_mint')
-    if s.chain == 'solana':
+    if s.source=='coinbase_advanced_sol_spot':
+        if s.product_id!='SOL-USDC' or s.mint!=SOL:
+            reasons.append('unsupported_coinbase_product')
+    elif s.chain == 'solana':
         # On-chain controls only exist for SPL/Token-2022 mints.
         if not s.account_checked or not s.cluster_verified:
             reasons.append('unverified_onchain_data')
@@ -33,7 +36,7 @@ def security_checks(s,cfg,now):
             reasons.append('active_token_authority')
         if s.mint != SOL and (s.top10_account_share is None or s.top10_account_share > cfg.max_top10_account_share):
             reasons.append('holder_concentration_unknown_or_high')
-    # Generic data gates apply to every chain, including EVM swap routes.
+    # Price/liquidity gates apply to the current Solana spot observation.
     if s.timestamp > now or now-s.timestamp > cfg.max_snapshot_age_seconds:
         reasons.append('future_or_stale_snapshot')
     if s.liquidity_usd < cfg.min_liquidity_usd:
@@ -111,17 +114,63 @@ def approve(p,f,s,book,cfg,now,entry_price=None,instrument=None):
         return Approval(False,tuple(reasons))
     existing_risk = sum(x.qty*max(0,x.side*(price-x.stop)) for x in book.positions)
     budget = min(equity*cfg.risk_per_trade,max(0,equity*cfg.max_open_risk-existing_risk))
-    budget -= 2*cfg.fixed_cost_usdc
-    notional = max(0,budget)/(p.stop_fraction+cost_fraction)
     side = 1 if p.action == 'LONG' else -1
-    # Combined gross exposure across spot and perp; no fake diversification.
-    notional = min(notional,equity*cfg.max_position_fraction,
+    # Combined exposure limit; no fake diversification across positions.
+    exposure_cap = min(equity*cfg.max_position_fraction,
                    max(0,equity*cfg.max_gross_fraction-book.gross(price)),
-                   max(0,equity*cfg.max_net_fraction-side*book.net(price)),
-                   s.liquidity_usd*cfg.max_pool_participation)
+                   max(0,equity*cfg.max_net_fraction-side*book.net(price)))
+    liquidity_cap = s.liquidity_usd*cfg.max_pool_participation
     available = max(0,book.cash-cfg.fixed_cost_usdc)
-    notional = min(notional,available/(1/leverage+(cfg.fee_bps+cfg.slippage_bps)/10000))
+    cash_cap = available/(1/leverage+(cfg.fee_bps+cfg.slippage_bps)/10000)
+    if cfg.sizing_mode == 'available_balance':
+        # Use the spendable balance, or reject the entire entry. Never silently
+        # shrink this profile back to a small risk-budget position.
+        notional = cash_cap
+        if notional > exposure_cap+1e-8:
+            return Approval(False,('balance_size_exceeds_exposure_limit',))
+        if notional > liquidity_cap+1e-8:
+            return Approval(False,('balance_size_exceeds_liquidity_limit',))
+        day_start = book.day_start_equity or equity
+        daily_remaining = max(0,day_start*cfg.max_daily_loss-max(0,day_start-equity))
+        drawdown_remaining = max(0,equity-book.peak*(1-cfg.max_drawdown))
+        budget = min(budget,daily_remaining,drawdown_remaining)
+        if notional*(p.stop_fraction+cost_fraction)+2*cfg.fixed_cost_usdc > budget+1e-8:
+            return Approval(False,('balance_size_exceeds_loss_budget',))
+    else:
+        budget -= 2*cfg.fixed_cost_usdc
+        notional = min(max(0,budget)/(p.stop_fraction+cost_fraction),exposure_cap,liquidity_cap,cash_cap)
     if notional < 10:
         return Approval(False,('insufficient_budget',))
+    total_cost_fraction = cost_fraction+2*cfg.fixed_cost_usdc/notional
+    if (p.take_fraction-total_cost_fraction)/(p.stop_fraction+total_cost_fraction) < cfg.min_reward_risk:
+        return Approval(False,('reward_risk_after_fixed_costs',))
     return Approval(True,('risk_constraints_passed',),notional,leverage,
                     notional*(p.stop_fraction+cost_fraction)+2*cfg.fixed_cost_usdc)
+
+
+def profile_feasibility(cfg):
+    """Necessary-condition check for an initially flat account, not an entry signal."""
+    from .strategies import GROSS_REWARD_MULTIPLES
+    if cfg.sizing_mode!='available_balance':
+        return dict(checked=False,reason='risk_budget_sizes_per_trade')
+    cash=cfg.initial_usdc
+    entry_fraction=(cfg.fee_bps+cfg.slippage_bps)/10000
+    notional=max(0,cash-cfg.fixed_cost_usdc)/(1+entry_fraction)
+    if notional<=0:
+        return dict(checked=True,baseline_can_fit=False,reason='no_spendable_cash')
+    costs=2*entry_fraction+2*cfg.fixed_cost_usdc/notional
+    loss_budget=cash*min(cfg.risk_per_trade,cfg.max_open_risk,cfg.max_daily_loss,cfg.max_drawdown)
+    max_stop=min(.08,loss_budget/notional-costs)
+    rows={}
+    for name,multiple in GROSS_REWARD_MULTIPLES.items():
+        best_rr=(multiple*max_stop-costs)/(max_stop+costs) if max_stop>=.01 else None
+        rows[name]=dict(gross_reward_multiple=multiple,best_net_reward_risk=best_rr,
+                        can_fit=max_stop>=.01 and best_rr>=cfg.min_reward_risk)
+    return dict(checked=True,baseline_can_fit=any(row['can_fit'] for row in rows.values()),
+        sizing_mode=cfg.sizing_mode,initial_cash_usdc=cash,spendable_notional_usdc=notional,
+        loss_budget_usdc=loss_budget,max_stop_fraction=max_stop,roundtrip_cost_fraction=costs,
+        required_net_reward_risk=cfg.min_reward_risk,strategies=rows,
+        assumptions='Initially flat account, initial cash, unchanged modeled costs and current strategy targets. Necessary condition only; live risk still applies.',
+        resolution=('Baseline plans can fit in principle; each proposal still requires fresh evidence and full risk approval.'
+                    if any(row['can_fit'] for row in rows.values()) else
+                    'Review strategy evidence and economic policy explicitly; do not inflate targets, reduce costs or widen loss limits to force a fill.'))

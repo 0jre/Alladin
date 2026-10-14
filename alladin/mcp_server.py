@@ -1,4 +1,4 @@
-"""Servidor MCP por stdio. O chat descobre as ferramentas; a ordem continua na Coinbase.
+"""Servidor MCP por stdio. Interface headless de pesquisa e paper na Solana.
 
 stdout carrega só frames JSON-RPC. Log e erro de processo vão para stderr.
 """
@@ -7,9 +7,9 @@ import sys
 import uuid
 from . import __version__
 from .dispatch import execute
-from .platforms import DESKS
 from .server import CONTRACT
 from .transport import DataError
+from .prompts import PromptLibrary
 
 PROTOCOL = '2024-11-05'
 ACCEPTED = {'2024-11-05', '2025-03-26', '2025-06-18'}
@@ -27,23 +27,15 @@ def tools():
     optional = {}
     return [
         _tool('alladin_status', 'Carteira paper, posições, pendência e bloqueios. Não envia ordem.', {}),
+        _tool('alladin_diagnostics', 'Verifica acesso atual a Coinbase; informa fase da falha e não altera carteira.', {}),
+        _tool('alladin_performance', 'Estatística de trades líquidos, incerteza e meta observada de 900 entradas. Não promete lucro.', {}),
         _tool('alladin_audit', 'Eventos recentes de decisão e execução.', {'limit': {'type': 'integer'}}),
         _tool('alladin_contract', 'Contrato de comandos do Alladin.', {}),
-        _tool('market_radar', 'Ranking, classificação, sinais, rastreador, alpha e copy observado. Leitura. A ordem não sai daqui.', {
-            'sources': {'type': 'array', 'items': {'type': 'string'}},
-            'symbols': {'type': 'array', 'items': {'type': 'string'}},
-            'query': {'type': 'string'}, 'limit': {'type': 'integer'}, 'chain': {'type': 'string'}}),
-        _tool('market_prices', 'Preços de um símbolo nas fontes de leitura.', {'symbol': {'type': 'string'}, 'sources': {'type': 'array', 'items': {'type': 'string'}}, 'limit': {'type': 'integer'}}, ('symbol',)),
-        _tool('coinbase_products', 'Produtos públicos da Advanced Trade.', {'product_type': {'type': 'string'}, 'limit': {'type': 'integer'}}),
-        _tool('coinbase_candles', 'Candles públicos da Advanced Trade.', {'product_id': {'type': 'string'}, 'start': {'type': 'integer'}, 'end': {'type': 'integer'}, 'granularity': {'type': 'integer'}}, ('product_id', 'start', 'end')),
-        _tool('coinbase_quote', 'Cotação de swap na Coinbase. Não executa.', {'network': {'type': 'string'}, 'from_token': {'type': 'string'}, 'to_token': {'type': 'string'}, 'from_amount': {'type': 'integer'}, 'taker': {'type': 'string'}}, ('network', 'from_token', 'to_token', 'from_amount', 'taker')),
-        _tool('coinbase_preview', 'Preview de ordem spot. Não envia.', {'product_id': {'type': 'string'}, 'side': {'type': 'string'}, 'quote_size': {'type': 'string'}, 'client_order_id': {'type': 'string'}}, ('product_id', 'side', 'quote_size', 'client_order_id')),
-        _tool('coinbase_order', 'Ordem spot na Coinbase. Exige live_arm e conta conectada.', {'product_id': {'type': 'string'}, 'side': {'type': 'string'}, 'quote_size': {'type': 'string'}, 'client_order_id': {'type': 'string'}}, ('product_id', 'side', 'quote_size', 'client_order_id')),
-        _tool('coinbase_connect', 'Devolve o action_request com o link Connect account. Não devolve token. Mostre o URL à pessoa.', {'scopes': {'type': 'array', 'items': {'type': 'string'}}, 'trade': {'type': 'boolean'}}),
-        _tool('coinbase_connection', 'Diz se a sessão OAuth local existe, sem revelar o token.', {}),
-        _tool('desks', 'Mesas de análise do Alladin.', {'desk': {'type': 'string'}}),
-        _tool('platforms', 'Contratos para Cursor, ChatGPT, Claude e sandbox.', {'name': {'type': 'string'}}),
+        _tool('paper_tick', 'Coleta candles, livro e trades públicos da Coinbase do produto SOL-USDC; aquece com OHLCV real e processa no máximo uma barra paper spot. Não acessa carteira nem envia transação.', {}),
         _tool('ingest', 'Barra fechada e snapshot. O conselho decide; a entrada paper sai na barra seguinte.', {'candle': {'type': 'object'}, 'snapshot': {'type': 'object'}}, ('candle', 'snapshot')),
+        _tool('execution_check', 'Checagem controlada explícita: abre/fecha apenas paper com cotação Coinbase e risco normal. Não mede estratégia autônoma.', {'action':{'type':'string','enum':['OPEN','CLOSE']},'check_id':{'type':'string'},'purpose':{'type':'string','enum':['execution_validation']},'proposal':{'type':'object'}}, ('action','check_id','purpose')),
+        _tool('prepare_decision', 'Prepara evidências e prompts para os agentes da sessão. Não faz inferência.', {}),
+        _tool('submit_decision', 'Valida pareceres externos e plano; execução somente paper.', {k:{'type':'object' if k in {'reports','decision'} else 'string'} for k in ['task_id','evidence_sha256','reports','decision','session_id']}, ('task_id','evidence_sha256','reports','decision','session_id')),
         _tool('analyze', 'Analisa o que está gravado. Não agenda operação.', optional),
         _tool('evaluate', 'Valida risco de uma proposta. Não executa.', {'proposal': {'type': 'object'}}, ('proposal',)),
         _tool('halt', 'Bloqueia entradas e fecha na próxima barra válida.', optional),
@@ -89,7 +81,7 @@ def handle(service, message):
             'protocolVersion': version if version in ACCEPTED else PROTOCOL,
             'capabilities': {'tools': {'listChanged': False}, 'prompts': {'listChanged': False}},
             'serverInfo': {'name': 'alladin', 'version': __version__},
-            'instructions': 'Visão de mercado é leitura. Ordem só na Coinbase, com live_arm. Se a ferramenta devolver action_request, mostre o link Connect account e não leia o token.',
+            'instructions': 'Alladin roda apenas Solana spot em paper. paper_tick coleta mercado atual, aguarda decisões enviadas pelos agentes da sessão em modo external e registra apenas fills simulados. Nunca conecte carteira nem assine transação.',
         }
     if method == 'ping':
         return {}
@@ -98,13 +90,20 @@ def handle(service, message):
     if method == 'tools/call':
         return _call(service, params)
     if method == 'prompts/list':
-        return {'prompts': [{'name': item['id'], 'description': item['title']} for item in DESKS]}
+        return {'prompts':[{'name':'alladin_'+role,'description':'Reviewed Solana spot paper finance role: '+role,
+                 'arguments':[{'name':'regime','description':'Optional trend, range or shock context','required':False}]}
+                 for role in sorted(PromptLibrary.ROLES)]}
     if method == 'prompts/get':
-        found = [item for item in DESKS if item['id'] == params.get('name')]
-        if not found:
-            raise ValueError('Mesa desconhecida')
-        return {'description': found[0]['title'], 'messages': [
-            {'role': 'user', 'content': {'type': 'text', 'text': found[0]['task']}}]}
+        name=params.get('name','')
+        role=name.removeprefix('alladin_') if isinstance(name,str) else ''
+        if name!='alladin_'+role or role not in PromptLibrary.ROLES:
+            raise ValueError('Prompt não encontrado')
+        arguments=params.get('arguments') or {}
+        regime=arguments.get('regime')
+        if regime not in (None,'trend','range','shock'):
+            raise ValueError('Regime desconhecido')
+        return {'description':'Alladin Finance Prompt '+role,
+                'messages':[{'role':'user','content':{'type':'text','text':PromptLibrary().render(role,regime)}}]}
     raise ValueError('Método MCP desconhecido')
 
 
@@ -117,6 +116,10 @@ def _call(service, params):
     try:
         if name == 'alladin_status':
             result = service.status()
+        elif name == 'alladin_diagnostics':
+            result=service.diagnostics()
+        elif name == 'alladin_performance':
+            result = service.performance()
         elif name == 'alladin_audit':
             limit = arguments.get('limit', 20)
             if type(limit) is not int or not 1 <= limit <= 500:
@@ -129,7 +132,9 @@ def _call(service, params):
             key = args.pop('idempotency_key', None) or 'mcp-' + uuid.uuid4().hex
             result = execute(service, name, args, key)
         return {'content': [{'type': 'text', 'text': json.dumps(result, ensure_ascii=False, allow_nan=False)}], 'isError': False}
-    except (ValueError, KeyError, TypeError, DataError) as exc:
+    except DataError as exc:
+        return _error(json.dumps({'error':'provider_unavailable','message':str(exc)[:300],**exc.details()}))
+    except (ValueError, KeyError, TypeError) as exc:
         return _error(str(exc)[:300])
 
 

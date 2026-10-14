@@ -20,12 +20,10 @@ def demo_feed(count=600,seed=42,timeframe=900):
         high = max(op,price)*(1+rng.uniform(.001,.005))
         low = min(op,price)*(1-rng.uniform(.001,.005))
         ts = start+i*timeframe
-        funding = .00002 if i%4 == 0 else 0
-        b = Candle(ts,op,high,low,price,rng.uniform(40000,120000),funding)
+        b = Candle(ts,op,high,low,price,rng.uniform(40000,120000))
         s = Snapshot(ts+timeframe,price=price,liquidity_usd=10000000,volume_24h_usd=50000000,
                      buy_sell_imbalance=rng.uniform(-.2,.2),account_checked=True,cluster_verified=True,
-                     oracle_price=price,oracle_timestamp=ts+timeframe,expected_funding_hourly=.00002,
-                     perp_market_verified=True,source='SYNTHETIC_FIXTURE',
+                     source='SYNTHETIC_FIXTURE',
                      warnings=('Todos os campos de mercado e segurança são sintéticos.',))
         yield b,s
 
@@ -83,13 +81,11 @@ def export(service,destination):
                    profit_factor=profit/loss if loss else None,
                    mean_trade_net_pnl=mean(pnl) if pnl else None,
                    costs_usdc=service.status()['costs_usdc'],
-                   funding_paid_usdc=sum(t['funding_paid'] for t in trades),
                    bar_return_mean=mean(returns) if returns else None,
                    bar_return_std=pstdev(returns) if returns else None,
                    halted=service.status()['halted'],halt_reason=service.status()['halt_reason'],
-                   llm_calls_process=getattr(getattr(service.council,'client',None),'calls',0),
-                   warnings=['Não mede vantagem preditiva ou prontidão de produção.',
-                             'Custos hipotéticos; perp é aproximação, não réplica de Drift/Adrena.',
+                   warnings=['Dados sintéticos não medem vantagem preditiva nem prontidão de produção.',
+                             'Fills usam premissas de custo e não são cotação/execução de rota.',
                              'Sem Sharpe anualizado: intervalo/amostra não justificam extrapolação.'])
     (out/'summary.json').write_text(json.dumps(summary,indent=2,ensure_ascii=False,allow_nan=False))
     with (out/'equity.csv').open('w',newline='') as f:

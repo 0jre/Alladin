@@ -4,3 +4,7 @@ __pycache__/
 *.sqlite*
 results/
 .venv/
+*.worker.lock
+build/
+*.egg-info/
+pip-ephem-wheel-cache*/

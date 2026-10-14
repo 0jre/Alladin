@@ -2,6 +2,8 @@ import argparse
 import json
 import os
 import sys
+import signal
+import threading
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -10,33 +12,35 @@ from .engine import Service
 from .research import write_demo,jsonl_feed,export
 from .server import build_server,CONTRACT
 from .mcp_server import serve as serve_mcp
-from .coinbase import Coinbase
-from .connect import connect_request
-from .market import MarketVision
-from .platforms import platforms
 from .client import BackendClient
-from .transport import HTTP, DataError
+from .transport import DataError,COLLECTION_TOTAL_SECONDS
 from .validation import validate
 
+def _interrupt(signum,frame):
+    raise KeyboardInterrupt()
+
 def main():
-    parser = argparse.ArgumentParser(description='Paper research backend. Market vision is read-only. Orders go through Coinbase.')
+    parser = argparse.ArgumentParser(description='Solana-only research backend; paper execution and read-only market data.')
     parser.add_argument('--config',default='config.json')
     parser.add_argument('--db',default='data/session.sqlite')
-    parser.add_argument('--agents',choices=['rules','llm'],default='rules')
-    parser.add_argument('--model',default=None)
-    parser.add_argument('--max-llm-calls',type=int,default=200)
+    parser.add_argument('--agents',choices=['external','rules'],default='external')
     sub = parser.add_subparsers(dest='command',required=True)
     demo = sub.add_parser('generate-demo'); demo.add_argument('--output',default='data/demo.jsonl'); demo.add_argument('--bars',type=int,default=600)
     run = sub.add_parser('replay'); run.add_argument('--feed',required=True); run.add_argument('--output',default='results'); run.add_argument('--finalize',action='store_true')
     serve = sub.add_parser('serve'); serve.add_argument('--port',type=int,default=8080)
+    serve.add_argument('--paper-worker',action='store_true')
+    serve.add_argument('--poll-seconds',type=int,default=30)
+    paper_live = sub.add_parser('paper-live'); paper_live.add_argument('--poll-seconds',type=int,default=30)
+    paper_live.add_argument('--cycles',type=int,default=None)
+    sub.add_parser('paper-tick')
+    demo_live=sub.add_parser('demo-live');demo_live.add_argument('--seconds',type=int,default=60)
+    demo_live.add_argument('--poll-seconds',type=int,default=5);demo_live.add_argument('--output',default='results/demo-live')
     sub.add_parser('mcp')
     sub.add_parser('status'); sub.add_parser('contract')
+    sub.add_parser('performance')
+    sub.add_parser('doctor')
+    policy=sub.add_parser('revise-policy');policy.add_argument('--from-config',required=True)
     exp = sub.add_parser('export'); exp.add_argument('--output',default='results')
-    products = sub.add_parser('products'); products.add_argument('--type', default='SPOT'); products.add_argument('--limit', type=int, default=50)
-    candles = sub.add_parser('candles'); candles.add_argument('product_id'); candles.add_argument('--start', type=int, required=True); candles.add_argument('--end', type=int, required=True)
-    radar = sub.add_parser('radar'); radar.add_argument('--limit', type=int, default=10)
-    sub.add_parser('connect')
-    listed = sub.add_parser('platforms'); listed.add_argument('--name', default=None)
     sub.add_parser('halt')
     val=sub.add_parser('validate'); val.add_argument('--feed',required=True); val.add_argument('--output',default='results/validation');val.add_argument('--folds',type=int,default=3)
     request = sub.add_parser('call'); request.add_argument('--url',default='http://127.0.0.1:8080'); request.add_argument('--request',required=True); request.add_argument('--key',required=True)
@@ -49,44 +53,86 @@ def main():
             result = {'file':args.output,'data':'SYNTHETIC','bars':args.bars}
         elif args.command == 'contract':
             result = CONTRACT
-        elif args.command == 'products':
-            result = Coinbase(HTTP()).products(args.type, args.limit)
-        elif args.command == 'candles':
-            result = Coinbase(HTTP()).candles(args.product_id, args.start, args.end)
-        elif args.command == 'radar':
-            result = MarketVision(HTTP()).radar(limit=args.limit)
-        elif args.command == 'connect':
-            result = connect_request()
-        elif args.command == 'platforms':
-            result = platforms(args.name)
         elif args.command == 'call':
             d = json.loads(Path(args.request).read_text())
             result = BackendClient(args.url).command(d['command'],d['args'],args.key)
         else:
-            if not 1 <= args.max_llm_calls <= 10000:
-                raise ValueError('Limite de chamadas: 1–10000')
             cfg = Config.load(args.config)
+            if args.command=='doctor':
+                from .diagnostics import diagnose
+                report=diagnose(cfg)
+                print(json.dumps(report,indent=2,allow_nan=False),flush=True)
+                return 0 if report['ready'] else 2
             if args.command == 'validate':
                 if args.agents != 'rules':
-                    raise ValueError('Validação por folds nesta versão aceita rules; avaliação LLM ainda pendente')
+                    raise ValueError('Validação por folds nesta versão aceita rules; sessões externas exigem agente conectado')
                 result=validate(cfg,args.feed,args.output,args.folds)
                 print(json.dumps(result,indent=2,ensure_ascii=False,allow_nan=False))
                 return 0
-            service = Service(cfg,args.db,args.agents,args.model,args.max_llm_calls)
+            service = Service(cfg,args.db,args.agents)
+            if args.command=='revise-policy':
+                print(json.dumps(service.revise_policy(Config.load(args.from_config)),indent=2),flush=True)
+                return 0
+            if args.command == 'demo-live':
+                from .demo import run_demo
+                result=run_demo(service,args.seconds,args.poll_seconds,args.output,
+                    emit=lambda row:print(json.dumps(row,allow_nan=False),flush=True))
+                print(json.dumps({'report':args.output+'/report.json','collection_elapsed_seconds':result['collection_elapsed_seconds'],
+                    'equity_usdc':result['final_status']['equity_usdc'],'audit_valid':result['audit']['valid']}),flush=True)
+                return 0
             if args.command == 'mcp':
                 return serve_mcp(service)
-            if args.command == 'serve':
-                server = build_server(service,args.port)
-                print(json.dumps(dict(status='listening',host='127.0.0.1',port=server.server_port,venue='coinbase',chain=cfg.chain,execution=cfg.execution)),flush=True)
+            if args.command == 'paper-tick':
+                result = service.command('paper_tick',{},'paper-tick-'+str(time.time_ns()))
+                print(json.dumps(result,indent=2,ensure_ascii=False,allow_nan=False))
+                return 0
+            elif args.command == 'paper-live':
+                from .runtime import PaperRunner
+                runner = PaperRunner(service,args.poll_seconds)
+                previous = signal.signal(signal.SIGTERM,lambda *_:runner.stop_event.set())
                 try:
+                    runner.run(args.cycles)
+                except KeyboardInterrupt:
+                    runner.stop_event.set()
+                finally:
+                    signal.signal(signal.SIGTERM,previous)
+                print(json.dumps({'result':'stopped','positions_left_open':len(service.status()['positions'])}),flush=True)
+                return 0
+            if args.command == 'serve':
+                from .runtime import PaperRunner
+                runner = PaperRunner(service,args.poll_seconds) if args.paper_worker else None
+                server = build_server(service,args.port,runner=runner)
+                worker_failed = threading.Event()
+                def work():
+                    try:
+                        runner.run()
+                    except Exception:
+                        worker_failed.set()
+                        print(json.dumps({'result':'worker_failed','detail':'worker stopped; supervisor restart required'}),flush=True)
+                        server.shutdown()
+                thread = threading.Thread(target=work,daemon=True,name='paper-worker') if runner else None
+                previous = signal.signal(signal.SIGTERM,_interrupt)
+                try:
+                    print(json.dumps(dict(status='listening',host='127.0.0.1',port=server.server_port,
+                        venue='coinbase_advanced',chain=cfg.chain,execution=cfg.execution,
+                        paper_worker=bool(runner))),flush=True)
+                    if thread:
+                        thread.start()
                     server.serve_forever()
                 except KeyboardInterrupt:
                     pass
                 finally:
+                    if runner:
+                        runner.stop_event.set()
                     server.server_close()
-                return 0
+                    if thread and thread.ident is not None:
+                        thread.join(timeout=COLLECTION_TOTAL_SECONDS+5)
+                    signal.signal(signal.SIGTERM,previous)
+                return 1 if worker_failed.is_set() else 0
             if args.command == 'status':
                 result = service.status()
+            elif args.command == 'performance':
+                result = service.performance()
             elif args.command == 'halt':
                 result = service.command('halt',{},'cli-halt-'+str(time.time_ns()))
             elif args.command == 'export':

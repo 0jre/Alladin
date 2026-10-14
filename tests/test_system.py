@@ -1,4 +1,5 @@
 import copy
+import io
 import json
 import math
 import os
@@ -7,6 +8,8 @@ import threading
 import unittest
 import urllib.request
 import urllib.error
+from types import SimpleNamespace
+import time
 from dataclasses import asdict,replace
 from unittest.mock import patch
 from pathlib import Path
@@ -15,11 +18,44 @@ from alladin.models import *
 from alladin.features import features
 from alladin.risk import approve,Approval,security_checks,update_breakers
 from alladin.broker import PaperBroker
-from alladin.agents import Council,OpenAIJSON,validate_report
+from alladin.agents import Council,validate_report
 from alladin.engine import Service
 from alladin.research import demo_feed,export
 from alladin.server import build_server
-from alladin.transport import DataError
+from alladin.transport import DataError,HTTP
+
+class Transport429Tests(unittest.TestCase):
+    def test_retries_upstream_429_after_retry_after(self):
+        sleeps=[]
+        calls=[]
+        def open_request(request,timeout):
+            calls.append(1)
+            if len(calls)==1:
+                raise urllib.error.HTTPError(request.full_url,429,'rate limited',
+                                             {'Retry-After':'2'},io.BytesIO(b''))
+            return io.BytesIO(b'{"ok":true}')
+        with patch('alladin.transport.urllib.request.build_opener') as build:
+            build.return_value.open.side_effect=open_request
+            result=HTTP(retries=2,retry_cap=8,sleeper=sleeps.append,
+                        random_value=lambda:0).json('https://api.example.test/data')
+        self.assertEqual(result,{'ok':True})
+        self.assertEqual(len(calls),2)
+        self.assertEqual(sleeps,[2])
+
+    def test_persistent_upstream_429_becomes_generic_data_error(self):
+        calls=[]
+        def open_request(request,timeout):
+            calls.append(1)
+            raise urllib.error.HTTPError(request.full_url,429,'rate limited',
+                                         {'Retry-After':'20'},io.BytesIO(b''))
+        with patch('alladin.transport.urllib.request.build_opener') as build:
+            build.return_value.open.side_effect=open_request
+            with self.assertRaises(DataError) as raised:
+                HTTP(retries=3,retry_cap=8,sleeper=lambda _:self.fail('must not sleep'),
+                     random_value=lambda:0).json('https://api.example.test/data')
+        self.assertEqual(len(calls),1)
+        self.assertEqual(raised.exception.retry_after,20)
+        self.assertNotIn('429',str(raised.exception))
 
 def feature_fixture():
     return dict(ready=True,price=100,regime='trend',cvar95_bar=.01,atr=1,
@@ -41,7 +77,8 @@ class ModelAndFeatureTests(unittest.TestCase):
             Config(chain='bitcoin')
         with self.assertRaises(ValueError):
             Candle(0,1,1,1,1,1,chain='bitcoin')
-        self.assertEqual(Config(chain='base').chain, 'base')
+        with self.assertRaises(ValueError):
+            Config(chain='base')
     def test_no_live_mode(self):
         with self.assertRaises(ValueError):
             Config(execution='live')
@@ -91,13 +128,13 @@ class RiskTests(unittest.TestCase):
         self.assertFalse(a.approved)
     def test_perp_missing_oracle_block(self):
         a=approve(proposal('perp'),self.f,replace(self.s,oracle_price=None),self.book,self.cfg,1000)
-        self.assertIn('missing_perp_oracle_or_funding',a.reasons)
+        self.assertIn('market_not_enabled',a.reasons)
     def test_oracle_deviation_block(self):
         a=approve(proposal('perp'),self.f,replace(self.s,oracle_price=90),self.book,self.cfg,1000)
-        self.assertIn('oracle_deviation',a.reasons)
+        self.assertIn('market_not_enabled',a.reasons)
     def test_funding_erodes_edge(self):
         a=approve(proposal('perp'),self.f,replace(self.s,expected_funding_hourly=.01),self.book,self.cfg,1000)
-        self.assertIn('funding_erodes_reward_risk',a.reasons)
+        self.assertIn('market_not_enabled',a.reasons)
     def test_short_spot_block(self):
         self.assertFalse(approve(proposal('spot','SHORT'),self.f,self.s,self.book,self.cfg,1000).approved)
     def test_halt_latches_after_day_change(self):
@@ -110,8 +147,7 @@ class RiskTests(unittest.TestCase):
         self.book.cash=8500
         self.book.positions=[Position('p','spot',1,15,100,98,106,0,0,99999,'x',0)]
         a=approve(proposal('perp'),self.f,self.s,self.book,self.cfg,1000)
-        self.assertTrue(a.approved)
-        self.assertLessEqual(a.notional,500)
+        self.assertIn('market_not_enabled',a.reasons)
     def test_gap_recheck(self):
         a=approve(proposal(),self.f,self.s,self.book,self.cfg,1000,103)
         self.assertIn('reference_price_deviation',a.reasons)
@@ -167,36 +203,16 @@ class AgentTests(unittest.TestCase):
         r=dict(stance='HOLD',score=.5,summary='x',evidence_keys=['invented'],concerns=[])
         with self.assertRaises(DataError):
             validate_report(r,{'price'})
-    def test_no_key_no_silent_rule_fallback(self):
-        with patch.dict(os.environ,{},clear=True):
-            p,a=Council('llm').decide(feature_fixture(),snapshot(),Portfolio(10000,10000,10000),Config(),1000)
+    def test_external_waits_without_credentials_or_network(self):
+        with patch.dict(os.environ,{},clear=True),patch('alladin.transport.HTTP.json',side_effect=AssertionError('inference forbidden')):
+            p,a=Council().decide(feature_fixture(),snapshot(),Portfolio(10000,10000,10000),Config(min_reward_risk=1.5),1000)
         self.assertEqual(p.action,'HOLD')
-        self.assertIn('error',a)
-    def test_llm_budget(self):
-        with patch.dict(os.environ,{'OPENAI_API_KEY':'test','OPENAI_MODEL':'test'}):
-            client=OpenAIJSON(max_calls=0)
-            with self.assertRaises(DataError):
-                client.ask('test',{}, {},'test')
-    def test_structured_council(self):
-        class Fake:
-            calls=0
-            def ask(self,role,evidence,schema,name):
-                if name=='manager':
-                    d=asdict(proposal())
-                    d.pop('mint',None)
-                    return d
-                return dict(stance='LONG',score=.8,summary='Brief assessment',evidence_keys=['price'],concerns=[])
-        p,a=Council('llm',client=Fake()).decide(feature_fixture(),snapshot(),Portfolio(10000,10000,10000),Config(),1000)
-        self.assertEqual(p.action,'LONG')
-        self.assertEqual(len(a['reports']),5)
-    def test_refusal_holds(self):
-        class FakeHTTP:
-            def json(self,*args,**kwargs):
-                return {'status':'completed','output':[{'type':'message','content':[{'type':'refusal','refusal':'x'}]}]}
-        with patch.dict(os.environ,{'OPENAI_API_KEY':'test','OPENAI_MODEL':'test'}):
-            c=OpenAIJSON(http=FakeHTTP())
-            with self.assertRaises(DataError):
-                c.ask('test',{}, {},'test')
+        self.assertEqual(a['gate'],'awaiting_external_agents')
+        self.assertIn('task',a)
+
+    def test_embedded_inference_mode_is_rejected(self):
+        with self.assertRaises(ValueError):Council('llm')
+
 
 class ServiceTests(unittest.TestCase):
     def setUp(self):
@@ -286,7 +302,8 @@ class HTTPTests(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory()
         self.token='x'*40
         self.service=Service(Config(),Path(self.temp.name)/'http.sqlite')
-        self.server=build_server(self.service,0,self.token)
+        self.runner=SimpleNamespace(health=lambda:{'ready':False,'running':False})
+        self.server=build_server(self.service,0,self.token,runner=self.runner)
         self.thread=threading.Thread(target=self.server.serve_forever,daemon=True)
         self.thread.start()
         self.url=f'http://127.0.0.1:{self.server.server_port}'
@@ -302,12 +319,38 @@ class HTTPTests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as e:
             self.request('/v1/status',auth=False)
         self.assertEqual(e.exception.code,401)
+    def test_readiness_requires_active_worker_and_recent_feed(self):
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.request('/ready',auth=False)
+        self.assertEqual(error.exception.code,503)
+        with self.service.store.transaction() as db:
+            state=self.service._load(db)
+            state['last_timestamp']=int(time.time())-self.service.cfg.timeframe_seconds
+            self.service.store.save(db,state)
+        self.runner.health=lambda:{'ready':True,'running':True}
+        with self.request('/ready',auth=False) as response:
+            self.assertTrue(json.load(response)['ready'])
+        with self.request('/v1/health') as response:
+            self.assertTrue(json.load(response)['worker']['running'])
     def test_health_and_json_contract(self):
         with self.request('/health',auth=False) as r:
             body=json.load(r)
             self.assertEqual(body['execution'],'paper')
-            self.assertEqual(body['venue'],'coinbase')
+        self.assertEqual(body['venue'],'coinbase_advanced')
         with self.request('/v1/contract') as r:self.assertIn('ingest',json.load(r)['commands'])
+    def test_finance_prompts_and_performance_are_authenticated_read_only(self):
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.request('/v1/prompts',auth=False)
+        self.assertEqual(error.exception.code,401)
+        with self.request('/v1/prompts/manager?regime=trend') as response:
+            data=json.load(response)
+            self.assertIn('PAPER',data['instructions'])
+            self.assertEqual(data['metadata']['version'],'2.1.0')
+        with self.request('/v1/performance') as response:
+            data=json.load(response)
+            self.assertEqual(data['closed_roundtrips'],0)
+            self.assertFalse(data['target']['measured_claim_supported'])
+        self.assertEqual(self.service.store.verify_audit()['count'],0)
     def test_unknown_command_not_shell(self):
         with self.assertRaises(urllib.error.HTTPError) as e:
             self.request('/v1/commands',{'command':'exec','args':{'cmd':'ls'}})
@@ -319,5 +362,16 @@ class HTTPTests(unittest.TestCase):
         with self.request('/v1/commands',body) as r:c=json.load(r)
         self.assertEqual(a,c)
         self.assertEqual(self.service.status()['bars_processed'],1)
+    def test_provider_throttle_never_leaks_as_429(self):
+        with patch('alladin.server.execute',side_effect=DataError(
+                'Fonte de dados temporariamente indisponível',retry_after=5)):
+            with self.assertRaises(urllib.error.HTTPError) as raised:
+                self.request('/v1/commands',{'command':'paper_tick','args':{}})
+        self.assertEqual(raised.exception.code,503)
+        self.assertEqual(raised.exception.headers['Retry-After'],'5')
+        body=json.loads(raised.exception.read())
+        self.assertEqual(body['error'],'provider_unavailable')
+        self.assertEqual(body['retry_after_seconds'],5)
+        self.assertNotIn('429',json.dumps(body))
 
 if __name__=='__main__':unittest.main()

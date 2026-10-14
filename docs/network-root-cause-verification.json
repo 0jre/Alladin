@@ -1,0 +1,125 @@
+{
+  "local_tests": {
+    "passed": 167,
+    "compile": "passed",
+    "diff_check": "passed",
+    "offline_wheel": "passed",
+    "isolated_wheel_import": "passed",
+    "wheel_sha256": "e2d08953f34ffb731b76e43dce3426a44e696d2b8975881c36de14e7a68f55d7"
+  },
+  "production_profile_changed": false,
+  "diagnostics": {
+    "ready": false,
+    "sources_ready": false,
+    "profile_feasibility": {
+      "checked": true,
+      "baseline_can_fit": false,
+      "sizing_mode": "available_balance",
+      "initial_cash_usdc": 250,
+      "spendable_notional_usdc": 249.6055916125811,
+      "loss_budget_usdc": 5.0,
+      "max_stop_fraction": 0.01687134970797664,
+      "roundtrip_cost_fraction": 0.003160252820225618,
+      "required_net_reward_risk": 1.8,
+      "strategies": {
+        "trend_following": {
+          "gross_reward_multiple": 2.2,
+          "best_net_reward_risk": 1.6951572641038442,
+          "can_fit": false
+        },
+        "volume_breakout": {
+          "gross_reward_multiple": 2.2,
+          "best_net_reward_risk": 1.6951572641038442,
+          "can_fit": false
+        },
+        "mean_reversion": {
+          "gross_reward_multiple": 2.0,
+          "best_net_reward_risk": 1.5267099350973539,
+          "can_fit": false
+        }
+      },
+      "assumptions": "Initially flat account, initial cash, unchanged modeled costs and current strategy targets. Necessary condition only; live risk still applies.",
+      "resolution": "Review strategy evidence and economic policy explicitly; do not inflate targets, reduce costs or widen loss limits to force a fill."
+    },
+    "checked_at": 1791993272,
+    "chain": "solana",
+    "execution": "paper",
+    "checks": {
+      "coinbase_market": {
+        "ok": false,
+        "elapsed_seconds": 8.000550404000023,
+        "error": {
+          "message": "Prazo total de coleta excedido; resposta tardia descartada",
+          "code": "deadline_exceeded",
+          "stage": "proxy_tunnel",
+          "source": "coinbase_candles"
+        }
+      },
+      "solana_mainnet": {
+        "ok": false,
+        "elapsed_seconds": 14.132300585000394,
+        "error": {
+          "message": "Prazo total de coleta excedido; resposta tardia descartada",
+          "code": "deadline_exceeded",
+          "stage": "proxy_tunnel",
+          "source": "solana_getAccountInfo"
+        }
+      }
+    },
+    "interpretation": "proxy_tunnel fails before TLS/API response; verify host egress/proxy policy. Never replace failed sources with fabricated snapshots."
+  },
+  "proxy_probe": {
+    "chatgpt.com": "CONNECT HTTP/1.1 200 OK in 0.002s",
+    "api.coinbase.com": "CONNECT timeout in 3.005s",
+    "api.mainnet-beta.solana.com": "CONNECT timeout in 3.004s",
+    "direct_dns": "Temporary failure in name resolution; HTTPS traffic uses configured proxy, not direct DNS"
+  },
+  "controlled_roundtrips": {
+    "test_complete_source_to_http_roundtrip": {
+      "passed": true,
+      "data": "OFFLINE_SOURCE_CONTRACT_FIXTURE",
+      "sizing_mode": "risk_budget",
+      "initial_usdc": 250,
+      "final_cash_usdc": 249.91670708129192,
+      "fees_usdc": 0.08329291870809917,
+      "closed_trades": 1,
+      "open_positions": [],
+      "audit": {
+        "valid": true,
+        "count": 5,
+        "head": "99d246b003f336cc4fff20cb6182fc3616c172b4b2eb851c7c990f0e1e8bee78"
+      }
+    },
+    "test_complete_source_to_mcp_roundtrip": {
+      "passed": true,
+      "data": "OFFLINE_SOURCE_CONTRACT_FIXTURE",
+      "sizing_mode": "risk_budget",
+      "initial_usdc": 250,
+      "final_cash_usdc": 249.91670708129192,
+      "fees_usdc": 0.08329291870809917,
+      "closed_trades": 1,
+      "open_positions": [],
+      "audit": {
+        "valid": true,
+        "count": 5,
+        "head": "b52b5c66dab2b25f8e230fa412f354bf42e2475a5f646fedc0ed190baef1b73f"
+      }
+    }
+  },
+  "existing_live_demo_account": {
+    "cash_usdc": 250,
+    "equity_usdc": 250,
+    "closed_trades": 0,
+    "open_positions": [],
+    "audit": {
+      "valid": true,
+      "count": 1,
+      "head": "226acc81490d141c7a874086fdbb0c63a8618686740b4749e953d16ccb5c437a"
+    }
+  },
+  "remaining_blocks": [
+    "Environment proxy/egress must allow Coinbase and configured Solana RPC; repository code cannot grant host network permissions.",
+    "Current default strategy targets cannot satisfy full-balance 2% risk and net reward/risk 1.8 with modeled costs; profile has not been silently relaxed."
+  ],
+  "conclusion": "HTTP client envelope defect fixed. HTTP/MCP source-contract OPEN/CLOSE and recovery pass. Live-source trading remains blocked; not represented as operational or profitable."
+}

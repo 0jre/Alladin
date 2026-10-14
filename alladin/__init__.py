@@ -1,2 +1,2 @@
-"""Alladin — paper research. Market vision is read-only. Orders go through Coinbase."""
-__version__ = '0.5.0'
+"""Alladin — Solana-only market research and spot paper trading backend."""
+__version__ = '0.6.0'

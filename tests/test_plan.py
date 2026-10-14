@@ -6,7 +6,6 @@ from pathlib import Path
 from alladin.agents import DECISION_SCHEMA
 from alladin.engine import Service
 from alladin.models import SOL, USDC, TOKEN_2022, Candle, Config, Proposal, Snapshot
-from alladin.signer import IsolatedSigner
 from alladin.universe import classify_snapshot, decode_mint_account
 from alladin.validation import assert_causal_feed
 
@@ -87,35 +86,13 @@ class PlanTests(unittest.TestCase):
         self.assertTrue(all(p['mint'] == USDC for p in left))
         self.assertNotEqual(sol['stop'], usdc['stop'])
 
-    def test_shadow_outage_blocks_entry(self):
-        temp = tempfile.TemporaryDirectory()
-        self.addCleanup(temp.cleanup)
-        def down(_mint):
-            raise RuntimeError('jupiter down')
-        service = Service(Config(execution='shadow'), Path(temp.name) / 's.sqlite', council=Fixed(), quoter=down)
-        for i in range(82):
-            service.command('ingest', {'candle': asdict(bar(i)), 'snapshot': asdict(snap(i))}, str(i))
-        self.assertEqual(service.status()['positions'], [])
-        self.assertIn('shadow_source_down', service.status()['last_decision']['approval']['reasons'])
-
-    def test_live_unknown_is_not_retried_and_secret_is_rejected(self):
-        calls = {'n': 0}
-        def submit(_intent):
-            calls['n'] += 1
-            return {'status': 'unknown'}
-        signer = IsolatedSigner(submit)
+    def test_shadow_execution_mode_is_rejected(self):
         with self.assertRaises(ValueError):
-            signer.execute({'mint': SOL, 'side': 'LONG', 'notional': 1, 'price': 1, 'simulated': True, 'market': 'spot', 'private_key': 'no'})
-        self.assertEqual(signer.calls, 0)
-        temp = tempfile.TemporaryDirectory()
-        self.addCleanup(temp.cleanup)
-        cfg = Config(execution='live', live_arm=True, live_notional_cap=10_000, live_allowlist=(SOL,))
-        service = Service(cfg, Path(temp.name) / 'l.sqlite', council=Fixed(), signer=signer)
-        for i in range(82):
-            service.command('ingest', {'candle': asdict(bar(i)), 'snapshot': asdict(snap(i))}, str(i))
-        self.assertEqual(calls['n'], 1)
-        self.assertEqual(service.status()['positions'], [])
-        self.assertIn(SOL, service.status()['blocked_mints'])
+            Config(execution='shadow')
+
+    def test_external_execution_is_not_an_alladin_mode(self):
+        with self.assertRaises(ValueError):
+            Config(execution='live')
 
     def test_manager_schema_has_no_notional(self):
         self.assertNotIn('notional', DECISION_SCHEMA['properties'])

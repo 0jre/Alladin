@@ -1,0 +1,188 @@
+{
+  "verified_at_utc": "2026-10-14T03:58:10.600321+00:00",
+  "upstream": {
+    "commit": "277112633031228587af3525557b088659a4df4f",
+    "files": 17,
+    "nested_git_removed": true,
+    "original_files_unchanged": true
+  },
+  "prompt_pack": {
+    "version": "1.0.0",
+    "bundle_sha256": "841122a6c699b7786e4819f678dba810b33334371fe8b5bcae82f6e3042e5ae5",
+    "upstream_commit": "277112633031228587af3525557b088659a4df4f",
+    "roles": {
+      "challenger": "ed5a99fd7eebe8f4d2dec90d416584e02c2a3c184e6bbd0488709a85bb5c7ec5",
+      "flow": "d3a1431a283cc0c4bfde0b7242c87c707e82b6f06e773f0f2e1d635ab431b431",
+      "manager": "e33076b739b20ce526d0d3d092dcf790fd5a0b5d9ca09e8bee0350e255a2d04c",
+      "market": "e7140db4f04887101a600cb7626df2016a9ef95fe378762a1f6437c096b0dc5e",
+      "onchain": "821922d8682b8390d62c57b1e6f499ff8b1a4928052535b76431a65b4b744bc4"
+    }
+  },
+  "checks": {
+    "unit_and_regression_tests": 140,
+    "python": "3.12.14",
+    "py_compile": "passed",
+    "git_diff_check": "passed",
+    "offline_wheel_build": "passed",
+    "wheel_isolated_resource_import": "passed",
+    "wheel_sha256": "26996d82e0a56682c72da6351909a7050f7116460cece6c74f0e7ba9e9ab551d"
+  },
+  "model_validation": {
+    "live_llm_executed": false,
+    "reason": "API key/model not configured; deterministic model fixtures used",
+    "autonomous_near_perfect_hit_rate_demonstrated": false
+  },
+  "statistical_scenarios_are_synthetic_fixtures": true,
+  "statistical_scenarios": {
+    "898_small_wins_2_large_losses": {
+      "closed_roundtrips": 900,
+      "wins": 898,
+      "losses": 2,
+      "breakeven": 0,
+      "win_rate": 0.9977777777777778,
+      "net_pnl_usdc": -1102,
+      "mean_net_pnl_usdc": -1.2244444444444444,
+      "profit_factor": 0.449,
+      "worst_trade_usdc": -1000,
+      "win_rate_wilson_95": [
+        0.9919339235352826,
+        0.9993903748312412
+      ],
+      "source_label": "SYNTHETIC_STATISTICAL_FIXTURE",
+      "agent_mode": "rules",
+      "strategy_data_eligible": false,
+      "decision_contexts": [
+        {
+          "context": {
+            "context": "unrecorded"
+          },
+          "closed_roundtrips": 900
+        }
+      ],
+      "mixed_decision_contexts": false,
+      "target": {
+        "entries": 900,
+        "max_nonwins": 2,
+        "min_win_rate": 0.9977777777777778,
+        "sample_sufficient": true,
+        "window_closed_roundtrips": 900,
+        "window_nonwins": 2,
+        "observed_target_met": true,
+        "lower_bound_reaches_target": false,
+        "measured_claim_supported": false
+      },
+      "guarantees_future_results": false,
+      "limitations": [
+        "Win is strictly positive net PnL after modeled costs; breakeven is a non-win.",
+        "The last chronological 900 closed trades are used for the default observed target; none are discarded.",
+        "Wilson bounds assume binomial sampling; serial dependence and regime changes weaken inference.",
+        "Source labels are metadata, not independent attestation of authentic market data.",
+        "Different models or prompt versions cannot be pooled to validate this target.",
+        "Controlled or fixture trades do not validate autonomous strategy performance."
+      ]
+    },
+    "900_perfect_fixture": {
+      "closed_roundtrips": 900,
+      "wins": 900,
+      "losses": 0,
+      "breakeven": 0,
+      "win_rate": 1.0,
+      "net_pnl_usdc": 900,
+      "mean_net_pnl_usdc": 1,
+      "profit_factor": null,
+      "worst_trade_usdc": 1,
+      "win_rate_wilson_95": [
+        0.9957498532699458,
+        1
+      ],
+      "source_label": "SYNTHETIC_STATISTICAL_FIXTURE",
+      "agent_mode": "rules",
+      "strategy_data_eligible": false,
+      "decision_contexts": [
+        {
+          "context": {
+            "context": "unrecorded"
+          },
+          "closed_roundtrips": 900
+        }
+      ],
+      "mixed_decision_contexts": false,
+      "target": {
+        "entries": 900,
+        "max_nonwins": 2,
+        "min_win_rate": 0.9977777777777778,
+        "sample_sufficient": true,
+        "window_closed_roundtrips": 900,
+        "window_nonwins": 0,
+        "observed_target_met": true,
+        "lower_bound_reaches_target": false,
+        "measured_claim_supported": false
+      },
+      "guarantees_future_results": false,
+      "limitations": [
+        "Win is strictly positive net PnL after modeled costs; breakeven is a non-win.",
+        "The last chronological 900 closed trades are used for the default observed target; none are discarded.",
+        "Wilson bounds assume binomial sampling; serial dependence and regime changes weaken inference.",
+        "Source labels are metadata, not independent attestation of authentic market data.",
+        "Different models or prompt versions cannot be pooled to validate this target.",
+        "Controlled or fixture trades do not validate autonomous strategy performance."
+      ]
+    }
+  },
+  "previous_controlled_paper_ledger": {
+    "closed_roundtrips": 1,
+    "wins": 0,
+    "losses": 1,
+    "breakeven": 0,
+    "win_rate": 0.0,
+    "net_pnl_usdc": -0.6024511696635585,
+    "mean_net_pnl_usdc": -0.6024511696635585,
+    "profit_factor": 0.0,
+    "worst_trade_usdc": -0.6024511696635585,
+    "win_rate_wilson_95": [
+      0,
+      0.7934506856227626
+    ],
+    "source_label": "coinbase_advanced_sol_spot",
+    "agent_mode": "controlled_balance_execution_test",
+    "strategy_data_eligible": false,
+    "decision_contexts": [
+      {
+        "context": {
+          "context": "unrecorded"
+        },
+        "closed_roundtrips": 1
+      }
+    ],
+    "mixed_decision_contexts": false,
+    "target": {
+      "entries": 900,
+      "max_nonwins": 2,
+      "min_win_rate": 0.9977777777777778,
+      "sample_sufficient": false,
+      "window_closed_roundtrips": 1,
+      "window_nonwins": 1,
+      "observed_target_met": false,
+      "lower_bound_reaches_target": false,
+      "measured_claim_supported": false
+    },
+    "guarantees_future_results": false,
+    "limitations": [
+      "Win is strictly positive net PnL after modeled costs; breakeven is a non-win.",
+      "The last chronological 900 closed trades are used for the default observed target; none are discarded.",
+      "Wilson bounds assume binomial sampling; serial dependence and regime changes weaken inference.",
+      "Source labels are metadata, not independent attestation of authentic market data.",
+      "Different models or prompt versions cannot be pooled to validate this target.",
+      "Controlled or fixture trades do not validate autonomous strategy performance.",
+      "Open positions or imported trades without complete events prevent a complete-history validation claim."
+    ],
+    "open_positions_not_scored": 0,
+    "imported_roundtrips_not_scored": 1,
+    "initial_usdc": 250,
+    "audit_verification_endpoint": "/v1/audit/verify"
+  },
+  "deployment": {
+    "github_actions_matrix": "not yet validated for this revision",
+    "persistent_host_deployed": false
+  }
+}

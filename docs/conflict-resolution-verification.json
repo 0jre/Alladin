@@ -1,0 +1,142 @@
+{
+  "changes": {
+    "coinbase_request_budget_seconds": 20,
+    "collection_budget_seconds": 45,
+    "min_reward_risk": {
+      "before": 1.8,
+      "after": 1.5
+    },
+    "preserved": {
+      "risk_per_trade": 0.02,
+      "max_daily_loss": 0.02,
+      "max_drawdown": 0.06,
+      "sizing_mode": "available_balance",
+      "fees_slippage_and_targets": "unchanged",
+      "quote_max_age_seconds": 30
+    }
+  },
+  "policy_revision": {
+    "result": "policy_revised",
+    "changes": {
+      "min_reward_risk": {
+        "before": 1.8,
+        "after": 1.5
+      }
+    },
+    "previous_config_sha256": "bea6b0bfd71bebd45ad3c3b5f6b6bfafa22e7f343ba1cca61a1adc03abd438bb",
+    "config_sha256": "b437c991c72bde9c7041956f2ff7d0b13d81806b797b78037c0190ee3acf4b97",
+    "portfolio_sha256": "eec38b44f0c68cd1855b3d1c3ec624893afcf9e17dbe889e6224a818900769da",
+    "cancelled_pending_decisions": true
+  },
+  "portfolio_hash_unchanged": true,
+  "existing_account": {
+    "cash_usdc": 250,
+    "equity_usdc": 250,
+    "positions": [],
+    "audit": {
+      "valid": true,
+      "count": 2,
+      "head": "3c805deea274e18fa2116b50e76eee02cc9e9699f1c6c662783419b6fcacfd7c"
+    }
+  },
+  "doctor": {
+    "ready": true,
+    "sources_ready": true,
+    "profile_feasibility": {
+      "checked": true,
+      "baseline_can_fit": true,
+      "sizing_mode": "available_balance",
+      "initial_cash_usdc": 250,
+      "spendable_notional_usdc": 249.6055916125811,
+      "loss_budget_usdc": 5.0,
+      "max_stop_fraction": 0.01687134970797664,
+      "roundtrip_cost_fraction": 0.003160252820225618,
+      "required_net_reward_risk": 1.5,
+      "strategies": {
+        "trend_following": {
+          "gross_reward_multiple": 2.2,
+          "best_net_reward_risk": 1.6951572641038442,
+          "can_fit": true
+        },
+        "volume_breakout": {
+          "gross_reward_multiple": 2.2,
+          "best_net_reward_risk": 1.6951572641038442,
+          "can_fit": true
+        },
+        "mean_reversion": {
+          "gross_reward_multiple": 2.0,
+          "best_net_reward_risk": 1.5267099350973539,
+          "can_fit": true
+        }
+      },
+      "assumptions": "Initially flat account, initial cash, unchanged modeled costs and current strategy targets. Necessary condition only; live risk still applies.",
+      "resolution": "Baseline plans can fit in principle; each proposal still requires fresh evidence and full risk approval."
+    },
+    "checked_at": 1791997199,
+    "chain": "solana",
+    "execution": "paper",
+    "checks": {
+      "coinbase_market": {
+        "ok": true,
+        "elapsed_seconds": 19.557303334000153,
+        "detail": {
+          "closed_bars": 120,
+          "last_closed_at": 1791996300,
+          "observed_at": 1791997199,
+          "price": 104.87,
+          "source": "coinbase_advanced_sol_spot"
+        }
+      }
+    },
+    "interpretation": "Coinbase source checks passed; profile feasibility is a necessary condition, not an entry signal."
+  },
+  "local_validation": {
+    "passed_tests": 178,
+    "compile": "passed",
+    "diff_check": "passed",
+    "offline_wheel": "passed",
+    "isolated_wheel_import": "passed",
+    "wheel_sha256": "06c618b76c3dbe5eace3a980a5e03a9fb7019bf75f384238d3946c8852cc005c"
+  },
+  "controlled_full_balance_roundtrips": {
+    "test_complete_source_to_http_roundtrip": {
+      "passed": true,
+      "data": "OFFLINE_SOURCE_CONTRACT_FIXTURE",
+      "sizing_mode": "available_balance",
+      "min_reward_risk": 1.5,
+      "initial_usdc": 250,
+      "final_cash_usdc": 249.21118322516222,
+      "fees_usdc": 0.7888167748377433,
+      "closed_trades": 1,
+      "positions": [],
+      "audit": {
+        "valid": true,
+        "count": 5,
+        "head": "8f1aac506fa860d64de4ed0063bc4b763d2e82c420386d08b7dbf7ae9aedf28c"
+      }
+    },
+    "test_complete_source_to_mcp_roundtrip": {
+      "passed": true,
+      "data": "OFFLINE_SOURCE_CONTRACT_FIXTURE",
+      "sizing_mode": "available_balance",
+      "min_reward_risk": 1.5,
+      "initial_usdc": 250,
+      "final_cash_usdc": 249.21118322516222,
+      "fees_usdc": 0.7888167748377433,
+      "closed_trades": 1,
+      "positions": [],
+      "audit": {
+        "valid": true,
+        "count": 5,
+        "head": "a6bc38e0ac000208d47a4899f2bc4d9526b87763450b4da8eb145319aa0681de"
+      }
+    }
+  },
+  "limits": [
+    "Lower required net reward/risk is an explicit economic policy change, not evidence of edge.",
+    "Feasible policy and successful source checks do not guarantee an entry, profitability or future availability.",
+    "Controlled trades use synthetic source-contract fixtures and are not live-market executions.",
+    "No provider inference, RPC, wallet connection, live orders or reset of account history.",
+    "Demo windows and quote freshness checks remain strict."
+  ]
+}

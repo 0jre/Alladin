@@ -2,84 +2,68 @@
 import hmac
 import json
 import os
+import math
+import time
 import threading
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlsplit,parse_qs
-from .connect import complete
 from .dispatch import execute
-from .transport import HTTP, DataError
+from .transport import DataError
+from .prompts import PromptLibrary
 
 CONTRACT = {
-    'version':'0.5','venue':'coinbase','execution':'paper',
+    'version':'0.6','venue':'coinbase_advanced','chain':'solana','execution':'paper',
     'endpoints':{'GET /health':'process health; no portfolio data',
+                 'GET /v1/diagnostics':'read-only Coinbase checks with failure phase; no ledger mutation',
                  'GET /v1/status':'persistent portfolio state',
+                 'GET /v1/performance':'closed-trade statistics, uncertainty and 900-entry research target; no profit guarantee',
+                 'GET /v1/prompts':'reviewed finance prompt-pack metadata',
+                 'GET /v1/prompts/{role}?regime=trend':'reviewed finance instructions for an allowed agent role',
+                 'GET /ready':'paper worker and feed readiness; no portfolio data',
+                 'GET /v1/health':'authenticated worker and session diagnostics',
                  'GET /v1/audit?limit=100':'decision and execution events',
                  'GET /v1/contract':'command contract',
                  'GET /v1/audit/verify':'verify event hash chain',
                  'POST /v1/commands':'{command,args}; Bearer token + Idempotency-Key'},
     'commands':{
+        'paper_tick':{'args':[],'result':'read-only Coinbase SOL-USDC market data only -> forward-only warmup or spot paper cycle; never signs or sends'},
         'ingest':{'args':['candle','snapshot'],'result':'closed bar -> agents -> risk -> pending paper action'},
+        'execution_check':{'args':['action','check_id','purpose=execution_validation','proposal (OPEN only)'],'result':'explicit controlled paper OPEN/CLOSE; risk required; excluded from autonomous strategy statistics'},
+        'prepare_decision':{'args':[],'result':'reuse valid frozen task (binding_version=2); otherwise prepare evidence, schemas and prompts; no inference'},
+        'submit_decision':{'args':['task_id','evidence_sha256','reports','decision','session_id'],'result':'validate frozen analysis and current execution risk; submitted with outcome or reprepare_required; paper only'},
         'analyze':{'args':[],'result':'analysis of stored data; does not schedule a trade'},
         'evaluate':{'args':['proposal'],'result':'risk approval only; does not execute'},
         'halt':{'args':[],'result':'latching stop; flatten on next valid bar'},
         'finalize':{'args':[],'result':'research settlement at last observed mark; closes session'},
-        'coinbase_products':{'args':['product_type (optional)','limit (optional)'],'result':'public Advanced Trade products; SPOT by default'},
-        'coinbase_candles':{'args':['product_id','start','end','granularity (optional)'],'result':'public Advanced Trade candles'},
-        'coinbase_quote':{'args':['network','from_token','to_token','from_amount','taker'],'result':'CDP Trade API swap quote for ethereum, base or arbitrum; does not execute'},
-        'coinbase_preview':{'args':['product_id','side','quote_size','client_order_id'],'result':'Advanced Trade order preview; does not send'},
-        'coinbase_order':{'args':['product_id','side','quote_size','client_order_id'],'result':'Advanced Trade spot order; requires live_arm and COINBASE_JWT or OAuth'},
-        'coinbase_connect':{'args':['scopes (optional)','trade (optional)'],'result':'action_request with the Coinbase Connect account URL; does not return a token'},
-        'coinbase_connection':{'args':[],'result':'whether the local process stored an OAuth session; no token'},
-        'market_radar':{'args':['sources (optional)','symbols (optional)','query (optional)','limit (optional)','chain (optional)'],'result':'read-only ranking, classification, signals, tracker, alpha and copy candidates'},
-        'market_prices':{'args':['symbol','sources (optional)','limit (optional)'],'result':'read-only prices for one symbol across sources'},
-        'desks':{'args':['desk (optional)'],'result':'Alladin research desks bound to these tools'},
-        'platforms':{'args':['name (optional)'],'result':'tool manifests for Cursor, ChatGPT, Claude and computer sandboxes'},
         'universe':{'args':[],'result':'registered mints and funnel status'},
         'admit':{'args':['snapshot'],'result':'classify a mint; does not trade'},
         'watch':{'args':['mint','arm (optional)'],'result':'move an eligible mint into the watched or negotiable book'},
         'unwatch':{'args':['mint'],'result':'drop a mint back to eligible and cancel its pending action'}},
-    'agent_flow':['market_radar/market_prices','coinbase_connect when an order needs an account','coinbase_products/coinbase_candles/coinbase_quote','ingest closed candles','analyze/evaluate','status/audit'],
+    'agent_flow':['paper_tick','prepare_decision','session agents and subagents','submit_decision','status/audit'],
     'mcp':{'command':'python -m alladin mcp','transport':'stdio'},
-    'notes':['Chats connect through MCP. The loopback HTTP API remains for sandbox and idempotent clients',
-             'Orders execute only at Coinbase',
-             'Binance, OKX, CoinGecko, CoinMarketCap, DexScreener and GMGN are read-only vision',
-             'action_request.url is the Connect account link; the token stays in the local process',
-             'ingest automatically invokes council; accepted entries execute on next bar open',
-             'no arbitrary shell command; order send requires live_arm']}
+    'notes':['Backend Python; Coinbase-only SOL-USDC data; spot paper only.',
+             'paper_tick reads Coinbase Advanced Trade public SOL spot market data exclusively.',
+             'No wallet connection, signer, transaction builder or transaction submission.',
+             'Paper fills use the current Coinbase midpoint plus configured cost assumptions; they are not routed quotes.',
+             'ingest automatically invokes the council; synthetic replay is not a live-market performance test.']}
 
-def build_server(service,port=8080,token=None):
+def build_server(service,port=8080,token=None,runner=None):
     token = token or os.environ.get('LAB_API_TOKEN')
     if not token or len(token) < 32:
         raise ValueError('LAB_API_TOKEN obrigatório com pelo menos 32 caracteres')
     mutation_lock = threading.Lock()
     class Handler(BaseHTTPRequestHandler):
-        server_version = 'Alladin/0.5'
+        server_version = 'Alladin/0.6'
         def log_message(self,*args):
             pass  # avoid tokens, addresses, request paths and payloads in access logs
-        def _oauth_callback(self, query):
-            params = parse_qs(query)
-            code = (params.get('code') or [''])[0]
-            state = (params.get('state') or [''])[0]
-            try:
-                complete(code, state, HTTP())
-                body = '<!doctype html><title>Coinbase</title><p>Conta Coinbase conectada. Pode fechar esta aba.</p>'
-                status = 200
-            except (ValueError, DataError):
-                body = '<!doctype html><title>Coinbase</title><p>Não foi possível concluir a conexão.</p>'
-                status = 400
-            raw = body.encode()
-            self.send_response(status)
-            self.send_header('Content-Type','text/html; charset=utf-8')
-            self.send_header('Content-Length',str(len(raw)))
-            self.send_header('Cache-Control','no-store')
-            self.end_headers()
-            self.wfile.write(raw)
-        def send_json(self,status,value):
+        def send_json(self,status,value,retry_after=None):
             raw = json.dumps(value,allow_nan=False,separators=(',',':')).encode()
             self.send_response(status)
             self.send_header('Content-Type','application/json; charset=utf-8')
             self.send_header('Content-Length',str(len(raw)))
             self.send_header('Cache-Control','no-store')
+            if retry_after is not None:
+                self.send_header('Retry-After',str(max(0,math.ceil(retry_after))))
             self.end_headers()
             self.wfile.write(raw)
         def authenticated(self):
@@ -92,14 +76,44 @@ def build_server(service,port=8080,token=None):
             self.connection.settimeout(15)
             parsed = urlsplit(self.path)
             if parsed.path == '/health':
-                return self.send_json(200,{'status':'ok','venue':'coinbase','chain':service.cfg.chain,'execution':service.cfg.execution})
-            if parsed.path == '/oauth/coinbase/callback':
-                return self._oauth_callback(parsed.query)
+                return self.send_json(200,{'status':'ok','venue':'coinbase_advanced','chain':service.cfg.chain,'execution':service.cfg.execution})
+            if parsed.path == '/ready':
+                try:
+                    state = service.status()
+                    ready = bool(runner and runner.health()['ready'] and not state['halted']
+                        and state['last_timestamp'] is not None
+                        and time.time()-state['last_timestamp']-service.cfg.timeframe_seconds
+                            <= max(120,service.cfg.timeframe_seconds*2)
+                        and not (state.get('last_decision') or {}).get('council',{}).get('error'))
+                    return self.send_json(200 if ready else 503,{'ready':ready})
+                except Exception:
+                    return self.send_json(503,{'ready':False})
             if not self.authenticated():
                 return
             try:
                 if parsed.path == '/v1/status':
                     result = service.status()
+                elif parsed.path == '/v1/diagnostics':
+                    result=service.diagnostics()
+                elif parsed.path == '/v1/performance':
+                    result = service.performance()
+                elif parsed.path == '/v1/prompts':
+                    result = PromptLibrary().metadata()
+                elif parsed.path.startswith('/v1/prompts/'):
+                    role=parsed.path.rsplit('/',1)[-1]
+                    regime=parse_qs(parsed.query).get('regime',[None])[0]
+                    if role not in PromptLibrary.ROLES:
+                        return self.send_json(404,{'error':'unknown_prompt_role'})
+                    if regime not in (None,'trend','range','shock'):
+                        raise ValueError('Regime desconhecido')
+                    library=PromptLibrary()
+                    result=dict(role=role,instructions=library.render(role,regime),metadata=library.metadata(regime))
+                elif parsed.path == '/v1/health':
+                    state = service.status()
+                    result = dict(worker=runner.health() if runner else {'running':False,'ready':False},
+                                  agent_mode=state['agent_mode'],halted=state['halted'],
+                                  last_bar=state['last_timestamp'],
+                                  decision_error=(state.get('last_decision') or {}).get('council',{}).get('error'))
                 elif parsed.path == '/v1/contract':
                     result = CONTRACT
                 elif parsed.path == '/v1/audit/verify':
@@ -120,8 +134,7 @@ def build_server(service,port=8080,token=None):
                 return
             if self.path != '/v1/commands':
                 return self.send_json(404,{'error':'not_found'})
-            if not mutation_lock.acquire(blocking=False):
-                return self.send_json(503,{'error':'command_busy','retry':'same_idempotency_key'})
+            locked = False
             try:
                 length = int(self.headers.get('Content-Length','0'))
                 if not 1 <= length <= 200000 or self.headers.get('Transfer-Encoding'):
@@ -134,16 +147,24 @@ def build_server(service,port=8080,token=None):
                 name,args = d['command'],d['args']
                 if not isinstance(name,str):
                     raise ValueError('command inválido')
+                if name != 'halt':
+                    locked = mutation_lock.acquire(blocking=False)
+                    if not locked:
+                        return self.send_json(503,{'error':'command_busy','retry':'same_idempotency_key'})
                 key = self.headers.get('Idempotency-Key','')
                 result = execute(service, name, args, key)
                 self.send_json(200,{'result':result})
             except (ValueError,TypeError,KeyError) as e:
                 self.send_json(400,{'error':'invalid_request','detail':str(e)[:200]})
             except DataError as e:
-                self.send_json(503,{'error':'provider_unavailable','detail':str(e)[:200]})
+                body={'error':'provider_unavailable','detail':str(e)[:200],**e.details()}
+                if getattr(e,'retry_after',None) is not None:
+                    body['retry_after_seconds']=e.retry_after
+                self.send_json(503,body,retry_after=getattr(e,'retry_after',None))
             except Exception:
                 self.send_json(500,{'error':'internal_error'})
             finally:
-                mutation_lock.release()
-    # Reads/health remain available during LLM calls; one serialized command at a time.
+                if locked:
+                    mutation_lock.release()
+    # Reads/health remain available while external sessions deliberate; one serialized command at a time.
     return ThreadingHTTPServer(('127.0.0.1',port),Handler)

@@ -58,7 +58,7 @@ def validate(cfg,feed_path,output,folds=3):
                            warmup_bars=cfg.warmup_bars)
             results.append(summary)
     report=dict(method='fixed_parameter_chronological_folds',folds=folds,
-                optimized=False,llm_evaluated=False,cohorts=cohorts,results=results,
+                optimized=False,external_agents_evaluated=False,cohorts=cohorts,results=results,
                 warnings=['Sem otimização ou seleção pelo retorno desses folds.',
                           'Indicadores recebem apenas warmup anterior; conta reinicia por fold.',
                           'Dados sintéticos continuam sintéticos; executar em histórico real antes de inferir vantagem.'])

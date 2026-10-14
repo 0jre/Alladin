@@ -1,16 +1,9 @@
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 import math
-import re
 
 SOL = 'So11111111111111111111111111111111111111112'
 USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
-EVM_CHAINS = ('ethereum', 'base', 'arbitrum')
-USDC_BY_CHAIN = {
-    'ethereum': '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
-    'base': '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-    'arbitrum': '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
-}
 TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
 TOKEN_2022 = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'
 MAINNET_GENESIS = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d'
@@ -21,22 +14,6 @@ def finite(x, name, minimum=None, maximum=None):
     if minimum is not None and x < minimum or maximum is not None and x > maximum:
         raise ValueError(f'{name}: fora do intervalo permitido')
     return x
-
-def evm_address(value):
-    if not isinstance(value, str) or len(value) != 42 or not value.startswith('0x'):
-        raise ValueError('Endereço EVM inválido')
-    try:
-        int(value[2:], 16)
-    except ValueError:
-        raise ValueError('Endereço EVM inválido') from None
-    return value
-
-def asset_id(chain, value):
-    if chain == 'solana':
-        return pubkey(value)
-    if chain in EVM_CHAINS:
-        return evm_address(value)
-    raise ValueError('Rede não suportada')
 
 def pubkey(value):
     # Validate base58 decoded length, not just the printable length.
@@ -55,6 +32,8 @@ def pubkey(value):
     return value
 
 def utc_timestamp(value):
+    if not isinstance(value,str):
+        raise ValueError('Timestamp textual obrigatório')
     d = datetime.fromisoformat(value.replace('Z', '+00:00'))
     if d.tzinfo is None:
         raise ValueError('Timestamp precisa de timezone')
@@ -72,9 +51,9 @@ class Candle:
     chain: str = 'solana'
     mint: str = SOL
     def __post_init__(self):
-        if self.chain not in ('solana',) + EVM_CHAINS:
-            raise ValueError('Rede não suportada')
-        asset_id(self.chain, self.mint)
+        if self.chain != 'solana':
+            raise ValueError('Alladin aceita somente Solana')
+        pubkey(self.mint)
         finite(self.timestamp, 'timestamp', 0)
         if not isinstance(self.timestamp, int):
             raise ValueError('timestamp deve ser inteiro')
@@ -105,6 +84,7 @@ class Snapshot:
     expected_funding_hourly: float | None = None
     perp_market_verified: bool = False
     source: str = 'unknown'
+    product_id: str | None = None
     slot: int | None = None
     warnings: tuple = ()
     available_at: int | None = None
@@ -116,9 +96,9 @@ class Snapshot:
     organic_score: float | None = None
     transfer_fee_bps: float | None = None
     def __post_init__(self):
-        if self.chain not in ('solana',) + EVM_CHAINS:
-            raise ValueError('Snapshot de rede não suportada')
-        asset_id(self.chain, self.mint)
+        if self.chain != 'solana':
+            raise ValueError('Alladin aceita somente snapshots Solana')
+        pubkey(self.mint)
         finite(self.timestamp, 'snapshot.timestamp', 0)
         if type(self.timestamp) is not int:
             raise ValueError('snapshot.timestamp deve ser inteiro')
@@ -130,6 +110,8 @@ class Snapshot:
         for name in ['mint_authority','freeze_authority']:
             if getattr(self,name) is not None:
                 pubkey(getattr(self,name))
+        if self.product_id is not None and self.product_id!='SOL-USDC':
+            raise ValueError('Produto Coinbase não suportado')
         if not isinstance(self.source,str) or len(self.source)>200:
             raise ValueError('source inválida')
         if not isinstance(self.warnings,(tuple,list)) or len(self.warnings)>30 or any(not isinstance(w,str) or len(w)>1000 for w in self.warnings):
@@ -181,10 +163,7 @@ class Proposal:
             raise ValueError('thesis inválida')
         if not isinstance(self.strategy, str) or len(self.strategy) > 100:
             raise ValueError('strategy inválida')
-        try:
-            pubkey(self.mint)
-        except ValueError:
-            evm_address(self.mint)
+        pubkey(self.mint)
 
 @dataclass
 class Position:
@@ -249,6 +228,7 @@ class Config:
     initial_usdc: float = 10000
     warmup_bars: int = 80
     risk_per_trade: float = .003
+    sizing_mode: str = 'risk_budget'
     max_position_fraction: float = .15
     max_gross_fraction: float = .30
     max_net_fraction: float = .20
@@ -273,23 +253,20 @@ class Config:
     max_historical_cvar: float = .04
     cooldown_bars: int = 4
     trailing_atr_multiple: float = 2.5
-    allowed_markets: tuple = ('spot', 'perp')
-    live_arm: bool = False
+    allowed_markets: tuple = ('spot',)
     max_watched: int = 32
     allow_transfer_fee: bool = False
     authority_exceptions: tuple = ()
-    live_notional_cap: float = 0.0
-    live_allowlist: tuple = ()
     def __post_init__(self):
-        if self.chain not in ('solana',) + EVM_CHAINS or self.execution not in {'paper', 'shadow', 'live'}:
-            raise ValueError('Rede não suportada; execução paper, shadow ou live')
-        if self.chain in EVM_CHAINS and self.mint == SOL:
-            object.__setattr__(self, 'mint', USDC_BY_CHAIN[self.chain])
-        if self.execution == 'live' and self.live_arm is not True:
-            raise ValueError('execução live exige live_arm explícito')
-        if type(self.live_arm) is not bool or type(self.allow_transfer_fee) is not bool:
-            raise ValueError('Flags de execução precisam ser booleanas')
-        asset_id(self.chain, self.mint)
+        if self.chain != 'solana' or self.execution != 'paper':
+            raise ValueError('Alladin aceita somente Solana em execução paper')
+        if not isinstance(self.sizing_mode,str) or self.sizing_mode not in {'risk_budget','available_balance'}:
+            raise ValueError('sizing_mode deve ser risk_budget ou available_balance')
+        if set(self.allowed_markets) != {'spot'}:
+            raise ValueError('Alladin aceita somente mercado spot')
+        if type(self.allow_transfer_fee) is not bool:
+            raise ValueError('Flag de segurança precisa ser booleana')
+        pubkey(self.mint)
         for name in ['risk_per_trade', 'max_position_fraction', 'max_gross_fraction', 'max_net_fraction',
                      'max_open_risk', 'max_daily_loss', 'max_drawdown', 'max_pool_participation',
                      'max_top10_account_share', 'max_oracle_deviation', 'min_confidence',
@@ -307,17 +284,12 @@ class Config:
                 raise ValueError(f'{name}: inteiro positivo obrigatório')
         if self.warmup_bars < 80:
             raise ValueError('warmup mínimo: 80 barras')
-        if not self.allowed_markets or set(self.allowed_markets) - {'spot', 'perp'}:
-            raise ValueError('allowed_markets inválido')
         if type(self.max_watched) is not int or self.max_watched < 1:
             raise ValueError('max_watched inválido')
-        finite(self.live_notional_cap, 'live_notional_cap', 0)
-        for name in ['authority_exceptions', 'live_allowlist']:
-            values = getattr(self, name)
-            if not isinstance(values, (tuple, list)):
-                raise ValueError(f'{name} inválido')
-            for item in values:
-                asset_id(self.chain, item)
+        if not isinstance(self.authority_exceptions, (tuple, list)):
+            raise ValueError('authority_exceptions inválido')
+        for item in self.authority_exceptions:
+            pubkey(item)
     @classmethod
     def load(cls, path):
         import json
@@ -325,7 +297,6 @@ class Config:
         d = json.loads(Path(path).read_text())
         if 'allowed_markets' in d:
             d['allowed_markets'] = tuple(d['allowed_markets'])
-        for name in ['authority_exceptions', 'live_allowlist']:
-            if name in d:
-                d[name] = tuple(d[name])
+        if 'authority_exceptions' in d:
+            d['authority_exceptions'] = tuple(d['authority_exceptions'])
         return cls(**d)

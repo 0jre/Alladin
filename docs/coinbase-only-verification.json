@@ -1,0 +1,106 @@
+{
+  "data_sources": [
+    "coinbase"
+  ],
+  "live_product": "SOL-USDC",
+  "blockchain_rpc_removed": true,
+  "rpc_environment_configuration_removed": true,
+  "inference_keys_or_models_required": false,
+  "execution": "paper",
+  "protocol": "external-session-v2",
+  "prompt_bundle": {
+    "version": "2.0.0",
+    "bundle_sha256": "1ff8073120967f1b47bfda052a230ecc632cb80434ce861915fe62c9f6ab3484",
+    "upstream_commit": "277112633031228587af3525557b088659a4df4f",
+    "roles": {
+      "challenger": "6ac6051dd949b0e866090a95e2b5312923e034c4a40942ee679a80c946ad5ba6",
+      "flow": "052c0d93e4468290d3a1fa4f4c73cd00ac19f15e7a84d8cf481179465b8b18a2",
+      "manager": "9ed7de74ea600f55e6b4b3bbb2823bd507f4931859a2e301736e00392d637234",
+      "market": "3648fd533161e59667f35ace38a1be8317d2f8ceec8c641a7da34230d0671807",
+      "quality": "660fc9f308fca0530ca02d05c6f9c4ed01ff894d21ed843c7a6cde4aded25311"
+    }
+  },
+  "local_validation": {
+    "unit_tests_passed": 172,
+    "compile": "passed",
+    "diff_check": "passed",
+    "offline_wheel": "passed",
+    "isolated_wheel_import": "passed",
+    "wheel_sha256": "2b33f36472e0e3eafe842946f012d26e8ee0102f057293a2450b39834c5975ae"
+  },
+  "covered": [
+    "No RPC client or RPC endpoint setting in runtime",
+    "All source calls in HTTP/MCP roundtrip are Coinbase GET requests",
+    "Fresh Coinbase snapshots do not claim account or cluster verification",
+    "On-chain fields excluded from evidence",
+    "quality replaces onchain role with new prompt bundle hashes",
+    "Old protocol task rejected before network; portfolio retained",
+    "Coinbase product and timestamp validation preserved"
+  ],
+  "existing_account": {
+    "cash_usdc": 250,
+    "equity_usdc": 250,
+    "open_positions": [],
+    "audit": {
+      "valid": true,
+      "count": 1,
+      "head": "226acc81490d141c7a874086fdbb0c63a8618686740b4749e953d16ccb5c437a"
+    }
+  },
+  "doctor": {
+    "ready": false,
+    "sources_ready": false,
+    "profile_feasibility": {
+      "checked": true,
+      "baseline_can_fit": false,
+      "sizing_mode": "available_balance",
+      "initial_cash_usdc": 250,
+      "spendable_notional_usdc": 249.6055916125811,
+      "loss_budget_usdc": 5.0,
+      "max_stop_fraction": 0.01687134970797664,
+      "roundtrip_cost_fraction": 0.003160252820225618,
+      "required_net_reward_risk": 1.8,
+      "strategies": {
+        "trend_following": {
+          "gross_reward_multiple": 2.2,
+          "best_net_reward_risk": 1.6951572641038442,
+          "can_fit": false
+        },
+        "volume_breakout": {
+          "gross_reward_multiple": 2.2,
+          "best_net_reward_risk": 1.6951572641038442,
+          "can_fit": false
+        },
+        "mean_reversion": {
+          "gross_reward_multiple": 2.0,
+          "best_net_reward_risk": 1.5267099350973539,
+          "can_fit": false
+        }
+      },
+      "assumptions": "Initially flat account, initial cash, unchanged modeled costs and current strategy targets. Necessary condition only; live risk still applies.",
+      "resolution": "Review strategy evidence and economic policy explicitly; do not inflate targets, reduce costs or widen loss limits to force a fill."
+    },
+    "checked_at": 1791993909,
+    "chain": "solana",
+    "execution": "paper",
+    "checks": {
+      "coinbase_market": {
+        "ok": false,
+        "elapsed_seconds": 8.000942212000155,
+        "error": {
+          "message": "Prazo total de coleta excedido; resposta tardia descartada",
+          "code": "deadline_exceeded",
+          "stage": "proxy_tunnel",
+          "source": "coinbase_candles"
+        }
+      }
+    },
+    "interpretation": "proxy_tunnel fails before TLS/API response; verify host egress/proxy policy. Only Coinbase is used; no blockchain RPC is configured."
+  },
+  "limits": [
+    "Removing RPC does not grant outbound access to Coinbase in this environment.",
+    "Coinbase source doctor still reports proxy_tunnel timeout.",
+    "Existing profile economics are unchanged.",
+    "Historical snapshots retain deprecated fields for deserialization only; new live collection does not set or expose them as on-chain evidence."
+  ]
+}

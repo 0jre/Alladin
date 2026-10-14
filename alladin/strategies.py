@@ -1,11 +1,14 @@
 from .models import Proposal
 
+GROSS_REWARD_MULTIPLES={'trend_following':2.2,'volume_breakout':2.2,'mean_reversion':2.0}
+
 def candidates(f, s, cfg):
     if not f.get('ready') or f['regime'] == 'shock':
         return []
     stop = min(.08,max(.01,2*f['atr_fraction']))
     ideas = []
-    def add(side, strategy, score, rr=2.2):
+    def add(side, strategy, score, rr=None):
+        rr=GROSS_REWARD_MULTIPLES[strategy] if rr is None else rr
         for market in cfg.allowed_markets:
             if side < 0 and market == 'spot':
                 continue
