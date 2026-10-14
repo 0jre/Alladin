@@ -293,3 +293,17 @@ Freshness, context hashes, idempotency, full-balance loss/exposure limits and co
 remain enforced. No task auto-submits itself; `demo-live` alone only collects and
 exports tasks. The consuming session must inspect and submit them. A successful
 software roundtrip does not establish profitability or mandate an entry.
+
+## Decision and worker coordination
+
+The external task binding is version 2. See `external-sessions.md` for frozen
+analysis, coalesced preparation, current execution risk, HOLD without market I/O,
+book-only exits and `reprepare_required`. A fresh quote never refreshes the analysis
+timestamp. Invalid or expired authority cannot execute; market updates alone do
+not replace an active task. External `execution_validation` roundtrips are
+explicit software checks and are excluded from strategy statistics.
+
+Operational tests must exercise an advancing worker during submit I/O, parallel
+preparers and submitters, restart/idempotency, current-risk vetoes, stale sources,
+network failure/retry, entry/exit and audit consistency. A green offline suite does
+not prove upstream network availability or profitable signals.

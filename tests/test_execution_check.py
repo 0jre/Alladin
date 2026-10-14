@@ -92,7 +92,7 @@ class ExecutionCheckTests(PipelineTests):
         with patch('alladin.engine.collect',side_effect=AssertionError('redundant collection')):
             second=self.service.command('prepare_decision',{},'second')['task']
         self.assertEqual(first['evidence']['snapshot']['timestamp'],second['evidence']['snapshot']['timestamp'])
-        self.assertNotEqual(first['id'],second['id'])
+        self.assertEqual(first['id'],second['id'])
 
     def test_absence_of_signal_is_not_a_transport_or_economic_failure(self):
         self.service.command('paper_tick',{},'warm')

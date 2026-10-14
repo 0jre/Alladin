@@ -35,3 +35,7 @@ prova de rentabilidade ou sessão de negociação.
 - Não implementar RPC, acesso blockchain ou verificação on-chain. Campos antigos de snapshot servem apenas à leitura de histórico; snapshots Coinbase novos não atestam cluster, contas ou autoridades.
 
 - Em modo external, candidatos quantitativos são sugestões. Não impedir tarefas ou propostas externas só porque não há candidato interno aprovado. Exigir evidências, consenso e aprovação final determinística do plano submetido.
+
+- Tarefas externas com binding_version=2 congelam as evidências e vinculam somente autoridade material da conta. Ticks de mercado não substituem tarefas válidas. prepare_decision deve coalescer chamadas concorrentes; não renovar prazos/timestamps ao reaproveitar.
+- submit_decision analisa o envelope original e revalida risco com conta, indicadores fechados e cotação atuais. HOLD não faz I/O de mercado nem aplica marks. CLOSE exige livro atual, sem depender de volume/trades nem da restrição de desvio de preço para entradas.
+- Evidência original e execução atual têm timestamps distintos na auditoria. Nunca chamar relatórios antigos de análise de candles novos. Desvio excessivo invalida a tarefa com reprepare_required; retry com a mesma chave não deve executar nada.

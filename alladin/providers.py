@@ -87,25 +87,7 @@ class CoinbaseMarket:
         # Slow statistics first. The executable paper reference is fetched last.
         volume_quote = self._volume(candles,timeframe_seconds)
         trade_data = self._get(f"products/{quote(self.product_id, safe='')}/ticker", {"limit": 100})
-        book = self._get("product_book", {"product_id": self.product_id, "limit": 50})
-        try:
-            pricebook = book["pricebook"]
-            if pricebook['product_id'] != self.product_id:
-                raise ValueError('Produto errado')
-            observed_at = utc_timestamp(pricebook['time'])
-            if not -5 <= time.time()-observed_at <= 30:
-                raise ValueError('Livro stale ou futuro')
-            bids, asks = pricebook["bids"], pricebook["asks"]
-            best_bid, best_ask = float(bids[0]["price"]), float(asks[0]["price"])
-        except (KeyError, TypeError, ValueError, IndexError):
-            raise DataError("Livro Coinbase inválido ou vazio") from None
-        if not all(math.isfinite(v) for v in (best_bid,best_ask)) or min(best_bid, best_ask) <= 0 or best_bid > best_ask:
-            raise DataError("Melhor bid/ask Coinbase inválido")
-        mid = (best_bid + best_ask) / 2
-        bid_depth = self._depth(bids, mid, lower=True)
-        ask_depth = self._depth(asks, mid, lower=False)
-        if min(bid_depth, ask_depth) <= 0:
-            raise DataError("Profundidade Coinbase insuficiente")
+        mark = self.quote(mint)
 
         trades = trade_data.get("trades") if isinstance(trade_data, dict) else None
         if not isinstance(trades, list) or not trades:
@@ -127,13 +109,39 @@ class CoinbaseMarket:
             raise DataError("Trade Coinbase inválido") from None
         imbalance = ((buy_notional - sell_notional) / (buy_notional + sell_notional)
                      if buy_notional + sell_notional else 0.0)
-        if not all(math.isfinite(v) for v in (bid_depth,ask_depth,buy_notional,sell_notional)):
+        if not all(math.isfinite(v) for v in (buy_notional,sell_notional)):
             raise DataError('Estatísticas Coinbase não finitas')
-        return dict(mint=mint, product_id=self.product_id, price=mid,
-                    bid=best_bid, ask=best_ask,
-                    liquidity_usd=bid_depth + ask_depth, volume_24h_usd=volume_quote,
-                    buy_sell_imbalance=imbalance,observed_at=observed_at,
-                    source="coinbase_advanced_sol_spot")
+        return {**mark,'volume_24h_usd':volume_quote,'buy_sell_imbalance':imbalance,'scope':'full'}
+
+    def quote(self,mint=SOL):
+        """Current book-only mark for exits; missing flow/volume cannot authorize entry."""
+        if pubkey(mint)!=SOL:
+            raise DataError('Coinbase quote aceita somente SOL-USDC')
+        book = self._get("product_book", {"product_id": self.product_id, "limit": 50})
+        try:
+            pricebook = book["pricebook"]
+            if pricebook['product_id'] != self.product_id:
+                raise ValueError('Produto errado')
+            observed_at = utc_timestamp(pricebook['time'])
+            if not -5 <= time.time()-observed_at <= 30:
+                raise ValueError('Livro stale ou futuro')
+            bids, asks = pricebook["bids"], pricebook["asks"]
+            best_bid, best_ask = float(bids[0]["price"]), float(asks[0]["price"])
+        except (KeyError, TypeError, ValueError, IndexError):
+            raise DataError("Livro Coinbase inválido ou vazio") from None
+        if not all(math.isfinite(v) for v in (best_bid,best_ask)) or min(best_bid, best_ask) <= 0 or best_bid > best_ask:
+            raise DataError("Melhor bid/ask Coinbase inválido")
+        mid = (best_bid + best_ask) / 2
+        bid_depth = self._depth(bids, mid, lower=True)
+        ask_depth = self._depth(asks, mid, lower=False)
+        if min(bid_depth, ask_depth) <= 0:
+            raise DataError("Profundidade Coinbase insuficiente")
+
+        if not all(math.isfinite(v) for v in (bid_depth,ask_depth)):
+            raise DataError('Estatísticas Coinbase não finitas')
+        return dict(mint=mint,product_id=self.product_id,price=mid,bid=best_bid,ask=best_ask,
+                    liquidity_usd=bid_depth+ask_depth,volume_24h_usd=0,buy_sell_imbalance=0,
+                    observed_at=observed_at,source='coinbase_advanced_sol_spot',scope='mark_only')
 
     def _volume(self,candles,timeframe_seconds):
         """Estimate quote volume over a full 24h of completed candles only."""
@@ -186,4 +194,6 @@ def collect(mint=SOL, market=None):
                     liquidity_usd=market['liquidity_usd'],volume_24h_usd=market['volume_24h_usd'],
                     buy_sell_imbalance=market['buy_sell_imbalance'],
                     warnings=('Dados exclusivos da Coinbase; nenhuma verificação on-chain foi realizada.',
-                              'Fills paper usam midpoint mais custos; nenhuma ordem é enviada.'))
+                              'Fills paper usam midpoint mais custos; nenhuma ordem é enviada.')+
+                              (('Cotação somente livro; volume 24h e fluxo não coletados nesta observação.',)
+                               if market.get('scope')=='mark_only' else ()))

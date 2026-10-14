@@ -25,6 +25,8 @@ class ExternalSessionTests(unittest.TestCase):
             self.service.store.save(db,state)
         self.clock=patch('alladin.engine.time.time',return_value=1000);self.clock.start();self.addCleanup(self.clock.stop)
         self.features=patch('alladin.engine.features',return_value=self.f);self.features.start();self.addCleanup(self.features.stop)
+        self.candles=patch('alladin.providers.CoinbaseMarket.candles',return_value=[Candle(100,100,101,99,100,10000)])
+        self.candles.start();self.addCleanup(self.candles.stop)
 
     def prepare(self):
         return self.service.command('prepare_decision',{},'prepare')['task']
@@ -77,10 +79,12 @@ class ExternalSessionTests(unittest.TestCase):
         self.assertIn('error',result['decision']['council'])
         self.assertIsNone(self.service.status()['pending'])
 
-    def test_new_preparation_replaces_previous_task(self):
+    def test_new_preparation_reuses_current_task(self):
         old=self.prepare()
-        self.service.command('prepare_decision',{},'new-prepare')
-        with self.assertRaises(ValueError):self.service.command('submit_decision',self.submission(old),'old')
+        new=self.service.command('prepare_decision',{},'new-prepare')
+        self.assertTrue(new['reused'])
+        self.assertEqual(old['id'],new['task']['id'])
+        self.assertEqual(self.service.command('submit_decision',self.submission(old),'old')['result'],'submitted')
 
     def test_mcp_exposes_external_session_protocol(self):
         result=handle(self.service,{'jsonrpc':'2.0','method':'tools/list'})
@@ -139,19 +143,25 @@ class ExternalSessionTests(unittest.TestCase):
         with self.live():task=self.prepare()
         fresh=replace(self.s,timestamp=1100,price=105,source='coinbase_advanced_sol_spot',product_id='SOL-USDC')
         with patch('alladin.engine.time.time',return_value=1100),patch('alladin.engine.collect',return_value=fresh):
-            with self.assertRaises(ValueError):self.service.command('submit_decision',self.submission(task),'deviation')
+            result=self.service.command('submit_decision',self.submission(task),'deviation')
+            self.assertEqual(result['result'],'reprepare_required')
+            self.assertEqual(self.service.status()['external_task']['status'],'invalidated')
+            new=self.service.command('prepare_decision',{},'after-deviation')['task']
+            self.assertNotEqual(new['id'],task['id'])
         self.assertEqual(self.service.status()['positions'],[])
 
-    def test_live_new_closed_bar_requires_new_context(self):
-        with self.live(),patch('alladin.engine.time.time',return_value=1850),patch('alladin.engine.collect',return_value=replace(self.s,timestamp=1850)):
+    def test_live_stale_closed_risk_data_blocks_entry(self):
+        fresh=replace(self.s,timestamp=1800,source='coinbase_advanced_sol_spot',product_id='SOL-USDC')
+        with self.live(),patch('alladin.engine.time.time',return_value=1800),patch('alladin.engine.collect',return_value=fresh):
             task=self.prepare()
-        with patch('alladin.engine.time.time',return_value=1900),patch('alladin.engine.collect',return_value=replace(self.s,timestamp=1900)):
-            with self.assertRaisesRegex(ValueError,'Nova barra'):
-                self.service.command('submit_decision',self.submission(task),'new-bar')
+        with patch('alladin.engine.time.time',return_value=2000),patch('alladin.engine.collect',return_value=replace(fresh,timestamp=2000)),patch('alladin.providers.CoinbaseMarket.candles',return_value=[Candle(0,100,101,99,100,10000)]):
+            from alladin.transport import DataError
+            with self.assertRaisesRegex(DataError,'Feed fechado'):
+                self.service.command('submit_decision',self.submission(task),'stale-bars')
 
     def test_live_stale_execution_quote_blocks_entry(self):
         with self.live():task=self.prepare()
-        with patch('alladin.engine.time.time',return_value=1100),patch('alladin.engine.collect',return_value=self.s):
+        with patch('alladin.engine.time.time',return_value=1100),patch('alladin.engine.collect',return_value=replace(self.s,source='coinbase_advanced_sol_spot',product_id='SOL-USDC')):
             from alladin.transport import DataError
             with self.assertRaises(DataError):self.service.command('submit_decision',self.submission(task),'stale')
         self.assertEqual(self.service.status()['positions'],[])

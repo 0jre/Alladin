@@ -4,7 +4,7 @@ import time
 import uuid
 from pathlib import Path
 from .transport import DataError,deadline
-from .external import context_hash
+from .external import task_is_current
 
 
 def run_demo(service,seconds=60,poll_seconds=5,output='results/demo-live',emit=None):
@@ -31,8 +31,7 @@ def run_demo(service,seconds=60,poll_seconds=5,output='results/demo-live',emit=N
                     with service.store.connect() as db:
                         state=service._load(db)
                     task=state.get('external_task')
-                    valid=bool(task and task['status']=='prepared' and time.time()<=task['expires_at']
-                               and task['context_sha256']==context_hash(state))
+                    valid=task_is_current(task,state,time.time())
                     if not valid:
                         row['stage']='prepare_decision'
                         row['preparation']=service.command('prepare_decision',{},f'demo-{run_id}-{len(observations)}-prepare')

@@ -25,8 +25,8 @@ uma barra. Chame `prepare_decision` sem argumentos. A resposta contém `task`:
 | Campo | Finalidade |
 |---|---|
 | `id`, `protocol` | Identidade da tarefa e versão do protocolo |
-| `context_sha256`, `evidence_sha256` | Vínculo com estado e evidências congeladas |
-| `created_at`, `expires_at`, `status` | Prazo de no máximo 300 segundos e consumo único |
+| `context_sha256`, `evidence_sha256` | Vínculo com autoridade material da conta e evidências congeladas |
+| `created_at`, `expires_at`, `status`, `binding_version` | Prazo de `min(300, 2 × timeframe)` segundos e consumo único; vínculo versão 2 |
 | `evidence` | Indicadores, snapshot, carteira, candidatos, custos, riscos e lacunas |
 | `instructions` | Prompts revisados dos cinco papéis |
 | `report_schema`, `decision_schema` | Contratos JSON exatos de saída |
@@ -97,3 +97,43 @@ retornando `abstained`. Comandos de coleta compartilham um prazo total de 45 seg
 podem repetir falhas transitórias com a mesma chave, sem usar dados fabricados.
 
 A partir de `external-session-v2`, os pareceres são `market`, `quality`, `flow` e `challenger`. O papel `onchain` não é aceito. Use nova preparação para tarefas do protocolo anterior; saldos e histórico não são zerados. A única fonte de dados é a Coinbase; não existe RPC ou verificação blockchain.
+
+## Coordenação com worker ativo
+
+`prepare_decision` retorna a mesma tarefa enquanto ela permanecer válida, mesmo
+com novas chaves idempotentes e chamadas concorrentes. `reused=true` não renova o
+prazo nem o instante das observações. O worker continua atualizando candles, marks,
+stops e circuit breakers. Essas observações não substituem uma análise em curso.
+Mudanças de caixa, identidade/tamanho de posições, fills, permissões, modo,
+configuração ou bloqueio de risco invalidam a autorização anterior.
+
+A decisão é verificada contra o envelope original, com hash reproduzido. Uma nova
+barra não torna automaticamente inválida uma tese ainda dentro do prazo. Para
+LONG, o backend coleta indicadores fechados atuais e uma cotação Coinbase de no
+máximo 30 segundos, limita o desvio em relação ao preço analisado e revalida todo o
+risco contra a conta atual. `analysis_as_of`, `risk_bar_closed_at` e
+`execution_snapshot` distinguem esses instantes; não representam análises novas
+dos agentes. O consumidor continua responsável pela validade da tese.
+
+HOLD é registrado sem coletar preço nem aplicar marks. CLOSE usa somente um livro
+Coinbase atual, dispensando candles, volume e trades; a restrição de desvio de
+preço para entrada não bloqueia a redução de exposição. A cotação de saída não
+contém volume/fluxo coletados e não autoriza uma compra posterior. A preparação
+seguinte coleta o contexto completo quando necessário.
+
+`submit_decision` mantém `result=submitted` e informa `outcome` (`opened`, `closed`,
+`abstained`, `risk_rejected` ou `scheduled` no replay). Se o preço de entrada sair
+do contexto, retorna `result=reprepare_required`, `outcome=context_rejected`,
+invalida a tarefa e não gera fill. Nesse caso prepare novamente, reanalise e use
+nova chave para o novo plano. Não repita relatórios antigos com hashes novos.
+Falhas transitórias de coleta não consomem tarefa nem chave: repita o mesmo pedido
+com a mesma chave enquanto a tarefa estiver válida. Tarefas anteriores ao vínculo
+versão 2 exigem nova preparação; carteira e histórico permanecem intactos.
+
+Uma sessão pode validar deliberadamente OPEN/CLOSE pelo protocolo externo usando
+`strategy=execution_validation`. A finalidade deve ficar explícita nos relatórios;
+o plano continua passando por todos os controles. Entradas são marcadas como
+`validation_only`; esses roundtrips ficam separados das estatísticas de estratégia,
+mas custos, PnL, perdas diárias e drawdown continuam afetando a conta. Essa checagem
+não é evidência de alpha. `demo-live` sozinho continua sendo um coletor de tarefas,
+e não um consumidor inteligente que envia planos.
