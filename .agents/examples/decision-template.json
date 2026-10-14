@@ -1,0 +1,94 @@
+{
+  "task_id": "REPLACE_WITH_RETURNED_TASK_ID",
+  "evidence_sha256": "REPLACE_WITH_RETURNED_EVIDENCE_HASH",
+  "session_id": "single-coordinator-template-not-an-agent-review",
+  "reports": {
+    "market": {
+      "stance": "HOLD",
+      "score": 0,
+      "summary": "No assessment has been supplied; this is a non-trading template.",
+      "evidence_keys": [],
+      "concerns": [
+        "Unreviewed template, not an independent agent assessment"
+      ],
+      "missing_data": [
+        "consumer_review"
+      ],
+      "invalidation": "Replace this template with an actual assessment of the returned task.",
+      "risk_flags": [
+        "model_uncertainty"
+      ],
+      "blocking": true,
+      "score_is_probability": false
+    },
+    "quality": {
+      "stance": "HOLD",
+      "score": 0,
+      "summary": "No assessment has been supplied; this is a non-trading template.",
+      "evidence_keys": [],
+      "concerns": [
+        "Unreviewed template, not an independent agent assessment"
+      ],
+      "missing_data": [
+        "consumer_review"
+      ],
+      "invalidation": "Replace this template with an actual assessment of the returned task.",
+      "risk_flags": [
+        "model_uncertainty"
+      ],
+      "blocking": true,
+      "score_is_probability": false
+    },
+    "flow": {
+      "stance": "HOLD",
+      "score": 0,
+      "summary": "No assessment has been supplied; this is a non-trading template.",
+      "evidence_keys": [],
+      "concerns": [
+        "Unreviewed template, not an independent agent assessment"
+      ],
+      "missing_data": [
+        "consumer_review"
+      ],
+      "invalidation": "Replace this template with an actual assessment of the returned task.",
+      "risk_flags": [
+        "model_uncertainty"
+      ],
+      "blocking": true,
+      "score_is_probability": false
+    },
+    "challenger": {
+      "stance": "HOLD",
+      "score": 0,
+      "summary": "No assessment has been supplied; this is a non-trading template.",
+      "evidence_keys": [],
+      "concerns": [
+        "Unreviewed template, not an independent agent assessment"
+      ],
+      "missing_data": [
+        "consumer_review"
+      ],
+      "invalidation": "Replace this template with an actual assessment of the returned task.",
+      "risk_flags": [
+        "model_uncertainty"
+      ],
+      "blocking": true,
+      "score_is_probability": false
+    }
+  },
+  "decision": {
+    "action": "HOLD",
+    "market": "spot",
+    "confidence": 0,
+    "stop_fraction": 0.02,
+    "take_fraction": 0.04,
+    "horizon_bars": 24,
+    "thesis": "No reviewed trade thesis is supplied by this template.",
+    "strategy": "unreviewed_template",
+    "evidence_keys": [],
+    "invalidation": "Review a real task before submitting a decision.",
+    "entry_conditions": [],
+    "exit_conditions": [],
+    "counterevidence_keys": []
+  }
+}

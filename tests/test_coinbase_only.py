@@ -58,6 +58,6 @@ class CoinbaseOnlyTests(unittest.TestCase):
                 state=service._load(db);state['external_task']={'protocol':'external-session-v1'}
                 service.store.save(db,state)
             with patch('alladin.engine.collect',side_effect=AssertionError('network')):
-                with self.assertRaisesRegex(ValueError,'protocolo antigo'):
+                with self.assertRaisesRegex(ValueError,'old protocol'):
                     service.command('submit_decision',{},'legacy')
             self.assertEqual(service.status()['cash_usdc'],10000)

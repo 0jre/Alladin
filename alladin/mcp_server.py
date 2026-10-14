@@ -1,6 +1,6 @@
-"""Servidor MCP por stdio. Interface headless de pesquisa e paper na Solana.
+"""MCP stdio server for headless SOL research and paper execution.
 
-stdout carrega só frames JSON-RPC. Log e erro de processo vão para stderr.
+stdout carries JSON-RPC frames only. Process logs and errors use stderr.
 """
 import json
 import sys
@@ -13,7 +13,7 @@ from .prompts import PromptLibrary
 
 PROTOCOL = '2024-11-05'
 ACCEPTED = {'2024-11-05', '2025-03-26', '2025-06-18'}
-_KEY = {'idempotency_key': {'type': 'string', 'description': 'Reutilize a mesma chave ao repetir a mesma operação.'}}
+_KEY = {'idempotency_key': {'type': 'string', 'description': 'Reuse the same key when retrying the identical operation.'}}
 
 
 def _tool(name, description, properties, required=()):
@@ -26,24 +26,24 @@ def _tool(name, description, properties, required=()):
 def tools():
     optional = {}
     return [
-        _tool('alladin_status', 'Carteira paper, posições, pendência e bloqueios. Não envia ordem.', {}),
-        _tool('alladin_diagnostics', 'Verifica acesso atual a Coinbase; informa fase da falha e não altera carteira.', {}),
-        _tool('alladin_performance', 'Estatística de trades líquidos, incerteza e meta observada de 900 entradas. Não promete lucro.', {}),
-        _tool('alladin_audit', 'Eventos recentes de decisão e execução.', {'limit': {'type': 'integer'}}),
-        _tool('alladin_contract', 'Contrato de comandos do Alladin.', {}),
-        _tool('paper_tick', 'Coleta candles, livro e trades públicos da Coinbase do produto SOL-USDC; aquece com OHLCV real e processa no máximo uma barra paper spot. Não acessa carteira nem envia transação.', {}),
-        _tool('ingest', 'Barra fechada e snapshot. O conselho decide; a entrada paper sai na barra seguinte.', {'candle': {'type': 'object'}, 'snapshot': {'type': 'object'}}, ('candle', 'snapshot')),
-        _tool('execution_check', 'Checagem controlada explícita: abre/fecha apenas paper com cotação Coinbase e risco normal. Não mede estratégia autônoma.', {'action':{'type':'string','enum':['OPEN','CLOSE']},'check_id':{'type':'string'},'purpose':{'type':'string','enum':['execution_validation']},'proposal':{'type':'object'}}, ('action','check_id','purpose')),
-        _tool('prepare_decision', 'Prepara evidências e prompts para os agentes da sessão. Não faz inferência.', {}),
-        _tool('submit_decision', 'Valida pareceres externos e plano; execução somente paper.', {k:{'type':'object' if k in {'reports','decision'} else 'string'} for k in ['task_id','evidence_sha256','reports','decision','session_id']}, ('task_id','evidence_sha256','reports','decision','session_id')),
-        _tool('analyze', 'Analisa o que está gravado. Não agenda operação.', optional),
-        _tool('evaluate', 'Valida risco de uma proposta. Não executa.', {'proposal': {'type': 'object'}}, ('proposal',)),
-        _tool('halt', 'Bloqueia entradas e fecha na próxima barra válida.', optional),
-        _tool('finalize', 'Encerra a pesquisa no último preço observado.', optional),
-        _tool('universe', 'Mints e status do funil.', optional),
-        _tool('admit', 'Classifica um snapshot. Não opera.', {'snapshot': {'type': 'object'}}, ('snapshot',)),
-        _tool('watch', 'Move um mint elegível para vigiado ou negociável.', {'mint': {'type': 'string'}, 'arm': {'type': 'boolean'}}, ('mint',)),
-        _tool('unwatch', 'Tira o mint do livro e cancela a ação pendente.', {'mint': {'type': 'string'}}, ('mint',)),
+        _tool('alladin_status', 'Read paper account, positions, pending activity and safety blocks. Does not send orders.', {}),
+        _tool('alladin_diagnostics', 'Check current Coinbase access and failure phase without account mutation.', {}),
+        _tool('alladin_performance', 'Observed net trade statistics, uncertainty and the descriptive 900-trade target; no profit guarantee.', {}),
+        _tool('alladin_audit', 'Recent decision and execution events.', {'limit': {'type': 'integer'}}),
+        _tool('alladin_contract', 'Alladin command contract.', {}),
+        _tool('paper_tick', 'Collect public Coinbase SOL-USDC candles, book and trades; warm up and process at most one forward spot paper bar. No wallet access or transaction submission.', {}),
+        _tool('ingest', 'Ingest a closed replay bar and snapshot; eligible paper entry occurs on the next bar.', {'candle': {'type': 'object'}, 'snapshot': {'type': 'object'}}, ('candle', 'snapshot')),
+        _tool('execution_check', 'Explicit controlled paper OPEN/CLOSE with Coinbase quotes and normal risk; not autonomous strategy evaluation.', {'action':{'type':'string','enum':['OPEN','CLOSE']},'check_id':{'type':'string'},'purpose':{'type':'string','enum':['execution_validation']},'proposal':{'type':'object'}}, ('action','check_id','purpose')),
+        _tool('prepare_decision', 'Prepare or reuse frozen evidence and prompts for the external session; no inference.', {}),
+        _tool('submit_decision', 'Validate external reports and plan; execution is paper only.', {k:{'type':'object' if k in {'reports','decision'} else 'string'} for k in ['task_id','evidence_sha256','reports','decision','session_id']}, ('task_id','evidence_sha256','reports','decision','session_id')),
+        _tool('analyze', 'Analyze stored context without scheduling a trade.', optional),
+        _tool('evaluate', 'Evaluate proposal risk without execution.', {'proposal': {'type': 'object'}}, ('proposal',)),
+        _tool('halt', 'Latch an entry halt; flattening requires subsequent valid processing.', optional),
+        _tool('finalize', 'Settle research at the last stored observed mark.', optional),
+        _tool('universe', 'Research mint funnel and status.', optional),
+        _tool('admit', 'Classify a research snapshot without trading.', {'snapshot': {'type': 'object'}}, ('snapshot',)),
+        _tool('watch', 'Move an eligible research mint to watched or negotiable.', {'mint': {'type': 'string'}, 'arm': {'type': 'boolean'}}, ('mint',)),
+        _tool('unwatch', 'Remove a watched mint and cancel its pending action.', {'mint': {'type': 'string'}}, ('mint',)),
     ]
 
 
@@ -60,7 +60,7 @@ def read_message(stream):
             headers[name.strip().lower()] = value.strip()
     length = int(headers.get('content-length', '0'))
     if not 1 <= length <= 1_000_000:
-        raise ValueError('Frame MCP inválido')
+        raise ValueError('Invalid MCP frame')
     return json.loads(stream.read(length))
 
 
@@ -72,7 +72,7 @@ def write_message(stream, payload):
 
 def handle(service, message):
     if not isinstance(message, dict) or message.get('jsonrpc') != '2.0' or 'method' not in message:
-        raise ValueError('JSON-RPC inválido')
+        raise ValueError('Invalid JSON-RPC')
     method = message['method']
     params = message.get('params') or {}
     if method == 'initialize':
@@ -81,7 +81,7 @@ def handle(service, message):
             'protocolVersion': version if version in ACCEPTED else PROTOCOL,
             'capabilities': {'tools': {'listChanged': False}, 'prompts': {'listChanged': False}},
             'serverInfo': {'name': 'alladin', 'version': __version__},
-            'instructions': 'Alladin roda apenas Solana spot em paper. paper_tick coleta mercado atual, aguarda decisões enviadas pelos agentes da sessão em modo external e registra apenas fills simulados. Nunca conecte carteira nem assine transação.',
+            'instructions': 'Alladin supports Coinbase SOL-USDC spot paper execution only. paper_tick collects market observations; external sessions supply decisions. All fills are simulated. Never connect a wallet or sign transactions.',
         }
     if method == 'ping':
         return {}
@@ -97,14 +97,14 @@ def handle(service, message):
         name=params.get('name','')
         role=name.removeprefix('alladin_') if isinstance(name,str) else ''
         if name!='alladin_'+role or role not in PromptLibrary.ROLES:
-            raise ValueError('Prompt não encontrado')
+            raise ValueError('Prompt not found')
         arguments=params.get('arguments') or {}
         regime=arguments.get('regime')
         if regime not in (None,'trend','range','shock'):
-            raise ValueError('Regime desconhecido')
+            raise ValueError('Unknown regime')
         return {'description':'Alladin Finance Prompt '+role,
                 'messages':[{'role':'user','content':{'type':'text','text':PromptLibrary().render(role,regime)}}]}
-    raise ValueError('Método MCP desconhecido')
+    raise ValueError('Unknown MCP method')
 
 
 def _call(service, params):
@@ -112,7 +112,7 @@ def _call(service, params):
     arguments = params.get('arguments') or {}
     known = {tool['name'] for tool in tools()}
     if name not in known or not isinstance(arguments, dict):
-        return _error('Ferramenta desconhecida')
+        return _error('Unknown tool')
     try:
         if name == 'alladin_status':
             result = service.status()
@@ -149,7 +149,7 @@ def serve(service, stdin=None, stdout=None):
         try:
             message = read_message(incoming)
         except (ValueError, json.JSONDecodeError, UnicodeError):
-            print('frame MCP recusado', file=sys.stderr)
+            print('MCP frame rejected', file=sys.stderr)
             return 1
         if message is None:
             return 0
@@ -161,4 +161,4 @@ def serve(service, stdin=None, stdout=None):
         except (ValueError, KeyError, TypeError) as exc:
             write_message(outgoing, {'jsonrpc': '2.0', 'id': message['id'], 'error': {'code': -32601, 'message': str(exc)[:200]}})
         except Exception:
-            write_message(outgoing, {'jsonrpc': '2.0', 'id': message['id'], 'error': {'code': -32603, 'message': 'erro interno'}})
+            write_message(outgoing, {'jsonrpc': '2.0', 'id': message['id'], 'error': {'code': -32603, 'message': 'internal error'}})

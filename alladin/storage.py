@@ -58,7 +58,7 @@ class Store:
                 try:
                     db.execute('PRAGMA wal_checkpoint(PASSIVE)')
                 except Exception:
-                    pass  # checkpoint nunca altera o resultado do comando já confirmado
+                    pass  # checkpoint never changes an already committed command result
         except BaseException:
             db.rollback()
             raise
@@ -99,18 +99,18 @@ class Store:
 
     def audit(self,limit=100):
         if type(limit) is not int or not 1 <= limit <= 1000:
-            raise ValueError('limit deve estar entre 1 e 1000')
+            raise ValueError('limit must be between 1 and 1000')
         with self.connect() as db:
             rows = db.execute('SELECT seq,ts,kind,payload FROM events ORDER BY seq DESC LIMIT ?',(limit,)).fetchall()
         return [dict(seq=a,timestamp=b,kind=c,payload=json.loads(d)) for a,b,c,d in reversed(rows)]
     def lookup(self,db,key,request):
         if not isinstance(key,str) or not 1 <= len(key) <= 128:
-            raise ValueError('Idempotency-Key obrigatória: 1–128 caracteres')
+            raise ValueError('Idempotency-Key is required: 1-128 characters')
         digest = hashlib.sha256(canonical(request).encode()).hexdigest()
         old = db.execute('SELECT digest,response FROM requests WHERE key=?',(key,)).fetchone()
         if old:
             if old[0] != digest:
-                raise ValueError('Idempotency-Key reutilizada com conteúdo diferente')
+                raise ValueError('Idempotency-Key reused with different content')
             return json.loads(old[1])
         return None
     def once(self,db,key,request,callback):

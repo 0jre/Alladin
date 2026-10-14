@@ -50,7 +50,7 @@ CONTRACT = {
 def build_server(service,port=8080,token=None,runner=None):
     token = token or os.environ.get('LAB_API_TOKEN')
     if not token or len(token) < 32:
-        raise ValueError('LAB_API_TOKEN obrigatório com pelo menos 32 caracteres')
+        raise ValueError('LAB_API_TOKEN is required and must contain at least 32 characters')
     mutation_lock = threading.Lock()
     class Handler(BaseHTTPRequestHandler):
         server_version = 'Alladin/0.6'
@@ -105,7 +105,7 @@ def build_server(service,port=8080,token=None,runner=None):
                     if role not in PromptLibrary.ROLES:
                         return self.send_json(404,{'error':'unknown_prompt_role'})
                     if regime not in (None,'trend','range','shock'):
-                        raise ValueError('Regime desconhecido')
+                        raise ValueError('Unknown regime')
                     library=PromptLibrary()
                     result=dict(role=role,instructions=library.render(role,regime),metadata=library.metadata(regime))
                 elif parsed.path == '/v1/health':
@@ -143,10 +143,10 @@ def build_server(service,port=8080,token=None,runner=None):
                     return self.send_json(415,{'error':'json_required'})
                 d = json.loads(self.rfile.read(length),parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
                 if not isinstance(d,dict) or set(d) != {'command','args'} or not isinstance(d['args'],dict):
-                    raise ValueError('Body deve conter somente command e args')
+                    raise ValueError('Body must contain only command and args')
                 name,args = d['command'],d['args']
                 if not isinstance(name,str):
-                    raise ValueError('command inválido')
+                    raise ValueError('Invalid command')
                 if name != 'halt':
                     locked = mutation_lock.acquire(blocking=False)
                     if not locked:

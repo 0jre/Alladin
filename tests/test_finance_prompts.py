@@ -163,7 +163,7 @@ class FinanceCouncilTests(unittest.TestCase):
 
     def test_model_score_cannot_be_presented_as_probability(self):
         p,a,_=self.run_case(ModelFixture(reports={'market':{'score_is_probability':True}}))
-        self.assertEqual(p.action,'HOLD');self.assertIn('probabilidade',a['error'])
+        self.assertEqual(p.action,'HOLD');self.assertIn('probability',a['error'])
 
     def test_manager_cannot_supply_position_size(self):
         for modification in ({'notional':250},):
@@ -205,7 +205,7 @@ class FinanceCouncilTests(unittest.TestCase):
 
     def test_no_position_cannot_be_closed(self):
         p,a,_=self.run_case(ModelFixture(manager={'action':'CLOSE'}))
-        self.assertEqual(p.action,'HOLD');self.assertIn('posição',a['error'])
+        self.assertEqual(p.action,'HOLD');self.assertIn('position',a['error'])
 
     def test_existing_position_may_be_closed_despite_entry_veto(self):
         f,s,b,c=fixture()

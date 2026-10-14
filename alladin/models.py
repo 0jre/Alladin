@@ -10,33 +10,33 @@ MAINNET_GENESIS = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d'
 
 def finite(x, name, minimum=None, maximum=None):
     if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x):
-        raise ValueError(f'{name}: número finito obrigatório')
+        raise ValueError(f'{name}: a finite number is required')
     if minimum is not None and x < minimum or maximum is not None and x > maximum:
-        raise ValueError(f'{name}: fora do intervalo permitido')
+        raise ValueError(f'{name}: outside the permitted range')
     return x
 
 def pubkey(value):
     # Validate base58 decoded length, not just the printable length.
     alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
     if not isinstance(value, str) or not 32 <= len(value) <= 44:
-        raise ValueError('Pubkey Solana inválida')
+        raise ValueError('Invalid Solana public key')
     n = 0
     for c in value:
         if c not in alphabet:
-            raise ValueError('Pubkey Solana inválida')
+            raise ValueError('Invalid Solana public key')
         n = n * 58 + alphabet.index(c)
     zeros = len(value) - len(value.lstrip('1'))
     length = zeros + (n.bit_length() + 7) // 8
     if length != 32:
-        raise ValueError('Pubkey deve decodificar para 32 bytes')
+        raise ValueError('Public key must decode to 32 bytes')
     return value
 
 def utc_timestamp(value):
     if not isinstance(value,str):
-        raise ValueError('Timestamp textual obrigatório')
+        raise ValueError('Timestamp text is required')
     d = datetime.fromisoformat(value.replace('Z', '+00:00'))
     if d.tzinfo is None:
-        raise ValueError('Timestamp precisa de timezone')
+        raise ValueError('Timestamp requires a timezone')
     return int(d.timestamp())
 
 @dataclass(frozen=True)
@@ -52,17 +52,17 @@ class Candle:
     mint: str = SOL
     def __post_init__(self):
         if self.chain != 'solana':
-            raise ValueError('Alladin aceita somente Solana')
+            raise ValueError('Alladin supports only Solana asset metadata')
         pubkey(self.mint)
         finite(self.timestamp, 'timestamp', 0)
         if not isinstance(self.timestamp, int):
-            raise ValueError('timestamp deve ser inteiro')
+            raise ValueError('timestamp must be an integer')
         for name in ['open', 'high', 'low', 'close']:
             finite(getattr(self, name), name, 1e-12)
         finite(self.volume, 'volume', 0)
         finite(self.funding_rate, 'funding_rate', -.1, .1)
         if self.low > min(self.open, self.close) or self.high < max(self.open, self.close) or self.low > self.high:
-            raise ValueError('OHLC inconsistente')
+            raise ValueError('Inconsistent OHLC')
 
 @dataclass(frozen=True)
 class Snapshot:
@@ -97,25 +97,25 @@ class Snapshot:
     transfer_fee_bps: float | None = None
     def __post_init__(self):
         if self.chain != 'solana':
-            raise ValueError('Alladin aceita somente snapshots Solana')
+            raise ValueError('Alladin supports only SOL snapshots')
         pubkey(self.mint)
         finite(self.timestamp, 'snapshot.timestamp', 0)
         if type(self.timestamp) is not int:
-            raise ValueError('snapshot.timestamp deve ser inteiro')
+            raise ValueError('snapshot.timestamp must be an integer')
         for name in ['account_checked','cluster_verified','perp_market_verified']:
             if type(getattr(self,name)) is not bool:
-                raise ValueError(f'{name}: booleano obrigatório')
+                raise ValueError(f'{name}: a Boolean is required')
         if self.oracle_timestamp is not None and (type(self.oracle_timestamp) is not int or self.oracle_timestamp < 0):
-            raise ValueError('oracle_timestamp inválido')
+            raise ValueError('Invalid oracle_timestamp')
         for name in ['mint_authority','freeze_authority']:
             if getattr(self,name) is not None:
                 pubkey(getattr(self,name))
         if self.product_id is not None and self.product_id!='SOL-USDC':
-            raise ValueError('Produto Coinbase não suportado')
+            raise ValueError('Unsupported Coinbase product')
         if not isinstance(self.source,str) or len(self.source)>200:
-            raise ValueError('source inválida')
+            raise ValueError('Invalid source')
         if not isinstance(self.warnings,(tuple,list)) or len(self.warnings)>30 or any(not isinstance(w,str) or len(w)>1000 for w in self.warnings):
-            raise ValueError('warnings inválido')
+            raise ValueError('Invalid warnings')
         finite(self.price, 'snapshot.price', 1e-12)
         finite(self.liquidity_usd, 'liquidity', 0)
         finite(self.volume_24h_usd, 'volume_24h', 0)
@@ -127,14 +127,14 @@ class Snapshot:
         if self.expected_funding_hourly is not None:
             finite(self.expected_funding_hourly, 'funding', -.1, .1)
         if self.available_at is not None and (type(self.available_at) is not int or self.available_at < self.timestamp):
-            raise ValueError('available_at inválido')
+            raise ValueError('Invalid available_at')
         if not isinstance(self.extensions, (tuple, list)) or len(self.extensions) > 40:
-            raise ValueError('extensions inválido')
+            raise ValueError('Invalid extensions')
         if any(not isinstance(x, str) or len(x) > 80 for x in self.extensions):
-            raise ValueError('extensions inválido')
+            raise ValueError('Invalid extensions')
         for name in ['extensions_decoded', 'sell_simulated', 'route_buy', 'route_sell']:
             if type(getattr(self, name)) is not bool:
-                raise ValueError(f'{name}: booleano obrigatório')
+                raise ValueError(f'{name}: a Boolean is required')
         if self.organic_score is not None:
             finite(self.organic_score, 'organic_score', 0, 100)
         if self.transfer_fee_bps is not None:
@@ -153,16 +153,16 @@ class Proposal:
     mint: str = SOL
     def __post_init__(self):
         if self.action not in {'LONG', 'SHORT', 'HOLD', 'CLOSE'} or self.market not in {'spot', 'perp'}:
-            raise ValueError('Ação/mercado inválido')
+            raise ValueError('Invalid action or market')
         finite(self.confidence, 'confidence', 0, 1)
         finite(self.stop_fraction, 'stop', .005, .10)
         finite(self.take_fraction, 'take', .005, .30)
         if type(self.horizon_bars) is not int or not 1 <= self.horizon_bars <= 96:
-            raise ValueError('horizon_bars inválido')
+            raise ValueError('Invalid horizon_bars')
         if not isinstance(self.thesis, str) or len(self.thesis) > 2000:
-            raise ValueError('thesis inválida')
+            raise ValueError('Invalid thesis')
         if not isinstance(self.strategy, str) or len(self.strategy) > 100:
-            raise ValueError('strategy inválida')
+            raise ValueError('Invalid strategy')
         pubkey(self.mint)
 
 @dataclass
@@ -259,13 +259,13 @@ class Config:
     authority_exceptions: tuple = ()
     def __post_init__(self):
         if self.chain != 'solana' or self.execution != 'paper':
-            raise ValueError('Alladin aceita somente Solana em execução paper')
+            raise ValueError('Alladin supports only SOL paper execution')
         if not isinstance(self.sizing_mode,str) or self.sizing_mode not in {'risk_budget','available_balance'}:
-            raise ValueError('sizing_mode deve ser risk_budget ou available_balance')
+            raise ValueError('sizing_mode must be risk_budget or available_balance')
         if set(self.allowed_markets) != {'spot'}:
-            raise ValueError('Alladin aceita somente mercado spot')
+            raise ValueError('Alladin supports only the spot market')
         if type(self.allow_transfer_fee) is not bool:
-            raise ValueError('Flag de segurança precisa ser booleana')
+            raise ValueError('Safety flag must be a Boolean')
         pubkey(self.mint)
         for name in ['risk_per_trade', 'max_position_fraction', 'max_gross_fraction', 'max_net_fraction',
                      'max_open_risk', 'max_daily_loss', 'max_drawdown', 'max_pool_participation',
@@ -281,13 +281,13 @@ class Config:
         for name in ['timeframe_seconds', 'max_snapshot_age_seconds', 'max_oracle_age_seconds',
                      'warmup_bars', 'cooldown_bars']:
             if type(getattr(self, name)) is not int or getattr(self, name) < 1:
-                raise ValueError(f'{name}: inteiro positivo obrigatório')
+                raise ValueError(f'{name}: a positive integer is required')
         if self.warmup_bars < 80:
-            raise ValueError('warmup mínimo: 80 barras')
+            raise ValueError('Minimum warmup: 80 bars')
         if type(self.max_watched) is not int or self.max_watched < 1:
-            raise ValueError('max_watched inválido')
+            raise ValueError('Invalid max_watched')
         if not isinstance(self.authority_exceptions, (tuple, list)):
-            raise ValueError('authority_exceptions inválido')
+            raise ValueError('Invalid authority_exceptions')
         for item in self.authority_exceptions:
             pubkey(item)
     @classmethod

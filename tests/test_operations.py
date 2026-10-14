@@ -147,7 +147,7 @@ class OperationsTests(unittest.TestCase):
         service=Service(self.cfg,self.path)
         with service.store.transaction() as db:
             state=service._load(db);state['input_mode']='paper_live';service.store.save(db,state)
-        with self.assertRaisesRegex(ValueError,'misture'):
+        with self.assertRaisesRegex(ValueError,'mix'):
             service.command('ingest',{},'replay')
 
     def test_slow_council_blocks_entry_but_preserves_call_budget(self):
@@ -166,7 +166,7 @@ class OperationsTests(unittest.TestCase):
              patch.object(service,'_decide',side_effect=decide),patch('alladin.engine.time.time',side_effect=lambda:clock[0]):
             result=service.command('paper_tick',{},'slow')
         self.assertEqual(result['decision']['proposal']['action'],'HOLD')
-        self.assertIn('expirou',result['decision']['council']['error'])
+        self.assertIn('expired',result['decision']['council']['error'])
         self.assertEqual(service.status()['positions'],[])
 
     def test_fresh_quote_before_the_closed_bar_is_not_a_valid_entry_mark(self):

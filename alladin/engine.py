@@ -36,20 +36,20 @@ class Service:
         before,after=asdict(previous_cfg),asdict(self.cfg)
         changes={key:{'before':before[key],'after':after[key]} for key in before if before[key]!=after[key]}
         if set(changes)!={'min_reward_risk'}:
-            raise ValueError('Revisão permite somente min_reward_risk; demais limites devem ser preservados')
+            raise ValueError('Policy revision permits only min_reward_risk; all other limits must be preserved')
         old_hash=config_fingerprint(previous_cfg)
         with self.store.transaction() as db:
             state=self.store.load(db)
             if state is None or state.get('agent_mode')!=self.council.mode:
-                raise ValueError('Sessão existente compatível obrigatória; revisão não cria carteira')
+                raise ValueError('A compatible existing session is required; revision does not create an account')
             if state.get('config_hash')==self.fingerprint:
                 row=db.execute("SELECT payload FROM events WHERE kind='policy_revision' ORDER BY seq DESC LIMIT 1").fetchone()
                 previous=json.loads(row[0]) if row else {}
                 if previous.get('previous_config_sha256')!=old_hash or previous.get('config_sha256')!=self.fingerprint:
-                    raise ValueError('Revisão já existente tem outra origem; configuração anterior incorreta')
+                    raise ValueError('Existing revision has a different origin; previous configuration is incorrect')
                 return dict(result='already_revised',changes=changes)
             if state.get('config_hash')!=old_hash:
-                raise ValueError('Configuração anterior não corresponde à sessão; revisão recusada')
+                raise ValueError('Previous configuration does not match the session; revision rejected')
             portfolio_digest=hashlib.sha256(canonical(state['portfolio']).encode()).hexdigest()
             state['config_hash']=self.fingerprint
             state['pending']=None
@@ -65,44 +65,44 @@ class Service:
     def _require_fresh_mark(self,s):
         now=int(time.time())
         if s.source!='coinbase_advanced_sol_spot' or s.product_id!='SOL-USDC' or s.mint!=self.cfg.mint:
-            raise ValueError('Fonte/produto inválidos')
+            raise ValueError('Invalid source or product')
         if not -5<=now-s.timestamp<=min(30,self.cfg.max_snapshot_age_seconds):
-            raise DataError('Cotação expirada ou futura; execução bloqueada')
+            raise DataError('Quote is stale or future-dated; execution blocked')
 
     def _validate_execution_check(self,args):
         required={'action','check_id','purpose'}
         if not isinstance(args,dict) or args.get('action') not in {'OPEN','CLOSE'}:
-            raise ValueError('Checagem exige OPEN ou CLOSE')
+            raise ValueError('Execution check requires OPEN or CLOSE')
         if args['action']=='OPEN':required.add('proposal')
         if set(args)!=required or args.get('purpose')!='execution_validation':
-            raise ValueError('Finalidade explícita execution_validation obrigatória')
+            raise ValueError('Explicit execution_validation purpose is required')
         if not isinstance(args['check_id'],str) or not 1<=len(args['check_id'])<=100:
-            raise ValueError('check_id inválido')
+            raise ValueError('Invalid check_id')
         if self.cfg.execution!='paper' or self.council.mode!='external':
-            raise ValueError('Checagem permite somente sessão externa em paper')
+            raise ValueError('Execution check requires an external paper session')
         if args['action']=='OPEN':
             p=Proposal(**args['proposal'])
             if p.action!='LONG' or p.market!='spot' or p.strategy!='execution_validation' or p.horizon_bars>4:
-                raise ValueError('Plano de checagem deve ser LONG spot execution_validation, horizonte até 4 barras')
+                raise ValueError('Check plan must be LONG spot execution_validation with horizon at most 4 bars')
 
     def _execution_check(self,db,state,book,args,data):
         self._validate_execution_check(args)
         if args['action']=='OPEN':
             if book.positions or state.get('execution_check'):
-                raise ValueError('Checagem exige carteira sem posição/checagem aberta')
+                raise ValueError('Check requires an account without an open position or active check')
             self._command(db,'paper_tick',{},data)
             state=self._load(db);book=Portfolio.restore(state['portfolio'])
         mark=data['snapshot'];self._require_fresh_mark(mark)
         broker=PaperBroker(book,self.cfg);now=int(time.time());events=[]
         if args['action']=='OPEN':
             if not state['history'] or now-(state['last_timestamp']+self.cfg.timeframe_seconds)>self.cfg.timeframe_seconds:
-                raise DataError('Contexto fechado expirou; atualize feed antes da checagem')
+                raise DataError('Closed context is stale; update the feed before the check')
             f=features([Candle(**row) for row in state['history']])
             p=Proposal(**args['proposal'])
             update_breakers(book,self.cfg,mark.price,now)
             approval=approve(p,f,mark,book,self.cfg,now,mark.price,state['universe'].get(mark.mint))
             if not approval.approved:
-                raise ValueError('Checagem recusada por risco: '+','.join(approval.reasons))
+                raise ValueError('Execution check rejected by risk: '+','.join(approval.reasons))
             event=self._execute_entry(broker,p,approval,mark.price,now,state,
                 decision_audit={'protocol':'paper-execution-check-v1','purpose':'execution_validation'},
                 source='controlled_execution_check')
@@ -115,7 +115,7 @@ class Service:
         else:
             active=state.get('execution_check')
             if not active or active['check_id']!=args['check_id']:
-                raise ValueError('Checagem não existe ou check_id não corresponde')
+                raise ValueError('Execution check does not exist or check_id does not match')
             pos=next((x for x in book.positions if x.id==active['position_id']),None)
             if pos is not None:
                 events.append(broker.close(pos,mark.price,now,'execution_validation_exit'))
@@ -159,7 +159,7 @@ class Service:
         if state.get('execution_check'):
             return replace(Proposal(thesis='Checagem controlada em andamento'),mint=s.mint),{'gate':'execution_validation','mode':self.council.mode}
         if book.halted:
-            return replace(Proposal(thesis='Sessão bloqueada: '+book.halt_reason),mint=s.mint),{'gate':'halted','mode':self.council.mode}
+            return replace(Proposal(thesis='Session halted: '+book.halt_reason),mint=s.mint),{'gate':'halted','mode':self.council.mode}
         if hasattr(self.council,'memory'):
             self.council.memory = list(state.get('memory',[]))
         evidence_features=dict(f)
@@ -170,9 +170,9 @@ class Service:
         return replace(p,mint=s.mint),audit
     def _prepare_external(self,db,state,book,f,s,now,args):
         if args or self.council.mode!='external':
-            raise ValueError('prepare_decision exige modo external e nenhum argumento')
+            raise ValueError('prepare_decision requires external mode and no arguments')
         if state['bars_processed']<self.cfg.warmup_bars:
-            raise ValueError('Aquecimento obrigatório')
+            raise ValueError('Warmup is required')
         if task_is_current(state.get('external_task'),state,time.time()):
             return dict(result='awaiting_external_agents',task=state['external_task'],reused=True)
         _,audit=self._decide(state,f,s,book,now)
@@ -185,7 +185,7 @@ class Service:
             return result
         created=int(time.time())
         if state.get('input_mode')=='paper_live' and not -5<=created-s.timestamp<=min(30,self.cfg.max_snapshot_age_seconds):
-            raise DataError('Cotação expirou; colete novo contexto antes de preparar')
+            raise DataError('Quote expired; collect a new context before preparation')
         task.update(id=uuid.uuid4().hex,context_sha256=context_hash(state),
                     evidence_sha256=audit['evidence_sha256'],created_at=created,
                     expires_at=created+min(300,2*self.cfg.timeframe_seconds),
@@ -200,19 +200,19 @@ class Service:
     def _submit_external(self,db,state,book,f,s,now,args,fresh=None,risk_candles=None):
         required={'task_id','evidence_sha256','reports','decision','session_id'}
         if self.council.mode!='external' or set(args)!=required:
-            raise ValueError('submit_decision exige task_id, evidence_sha256, reports, decision e session_id')
+            raise ValueError('submit_decision requires task_id, evidence_sha256, reports, decision and session_id')
         if not isinstance(args['session_id'],str) or not 1<=len(args['session_id'])<=200:
-            raise ValueError('session_id inválido; não envie credenciais')
+            raise ValueError('Invalid session_id; do not send credentials')
         task=state.get('external_task')
         if not task or task['id']!=args['task_id'] or task['status']!='prepared':
-            raise ValueError('Tarefa inexistente, substituída ou já consumida')
+            raise ValueError('Task does not exist, was replaced, or has already been consumed')
         if args['evidence_sha256']!=task['evidence_sha256'] or context_hash(state)!=task['context_sha256']:
-            raise ValueError('Contexto mudou; prepare uma nova decisão')
+            raise ValueError('Context changed; prepare a new decision')
         wall=int(time.time())
         if wall>task['expires_at'] or wall<task['created_at']-5:
-            raise ValueError('Tarefa expirada; prepare uma nova decisão')
+            raise ValueError('Task expired; prepare a new decision')
         if task.get('binding_version')!=BINDING_VERSION:
-            raise ValueError('Vínculo de tarefa antigo; prepare uma nova decisão')
+            raise ValueError('Old task binding; prepare a new decision')
         live=state.get('input_mode')=='paper_live'
         evidence=task['evidence']
         # Reproduce exactly the evidence reviewed by the caller. Live ticks may
@@ -224,13 +224,13 @@ class Service:
         p,audit=self.council.decide(analysis_features,analysis_snapshot,analysis_book,
             self.cfg,evidence['as_of'],submission={k:args[k] for k in ('reports','decision')})
         if audit.get('evidence_sha256')!=task['evidence_sha256']:
-            raise ValueError('Evidências divergentes')
+            raise ValueError('Evidence mismatch')
         audit.update(session_id=args['session_id'],analysis_as_of=evidence['as_of'],
                      task_id=task['id'],binding_version=BINDING_VERSION)
         mark=fresh if live else s
         if live and p.action!='HOLD':
             if mark is None:
-                raise DataError('Cotação atual obrigatória; nenhuma operação executada')
+                raise DataError('A current quote is required; no operation executed')
             self._require_fresh_mark(mark)
             if p.action=='LONG' and abs(mark.price/analysis_snapshot.price-1)>self.cfg.max_entry_gap_fraction:
                 # Permanently retire this thesis instead of returning the same
@@ -245,7 +245,7 @@ class Service:
             # Latest indicators guard risk; they do not replace the frozen thesis.
             closed_at=f.get('bar_closed_at',state['last_timestamp']+self.cfg.timeframe_seconds)
             if p.action=='LONG' and (not 0<=wall-closed_at<=self.cfg.timeframe_seconds or mark.timestamp<closed_at):
-                raise DataError('Feed fechado desatualizado; entrada bloqueada')
+                raise DataError('Closed feed is stale; entry blocked')
             audit['risk_bar_closed_at']=closed_at
         audit['execution_snapshot']=asdict(mark) if mark is not None and p.action!='HOLD' else None
         approval=approve(p,f,mark or s,book,self.cfg,wall if live else now,
@@ -297,9 +297,9 @@ class Service:
         state['memory'] = state['memory'][-20:]
     def _execute_entry(self,broker,p,a,price,ts,state,decision_audit=None,source=None):
         if self.cfg.execution != 'paper':
-            raise ValueError('Alladin só permite fills paper; execução externa não existe')
+            raise ValueError('Alladin permits only paper fills; external execution is unavailable')
         if p.market != 'spot':
-            raise ValueError('Alladin só permite posições spot')
+            raise ValueError('Alladin permits only spot positions')
         event=broker.open(p,a,price,ts)
         decision=(state.get('last_decision') or {}).get('council',{}) if decision_audit is None else decision_audit
         event['decision_context']=dict(agent_mode=self.council.mode,protocol=decision.get('protocol'),session_id=decision.get('session_id'),
@@ -318,22 +318,22 @@ class Service:
         events = []
         for pos in list(broker.book.positions):
             if pos.mint not in marks:
-                raise ValueError('Sem preço para liquidar todas as posições')
+                raise ValueError('Missing prices to settle all positions')
         for mint in {p.mint for p in broker.book.positions}:
             events.extend(broker.flatten(marks[mint],ts,reason,mint=mint))
         return events
     def _universe(self,db,state,name,args):
         if name == 'universe':
             if args:
-                raise ValueError('universe não aceita argumentos')
+                raise ValueError('universe accepts no arguments')
             self.store.save(db,state)
             return dict(instruments=state['universe'])
         if name == 'admit':
             if set(args) != {'snapshot'}:
-                raise ValueError('admit exige snapshot')
+                raise ValueError('admit requires snapshot')
             s = Snapshot(**args['snapshot'])
             if s.mint == self.cfg.mint:
-                raise ValueError('Mint âncora permanece negociável pela configuração')
+                raise ValueError('Configured anchor mint remains negotiable')
             inst = classify_snapshot(s,self.cfg)
             state['universe'][s.mint] = inst
             if inst['status'] != 'eligible':
@@ -343,25 +343,25 @@ class Service:
             return inst
         if name == 'watch':
             if set(args)-{'mint','arm'} or 'mint' not in args or type(args.get('arm',False)) is not bool:
-                raise ValueError('watch exige mint e arm booleano opcional')
+                raise ValueError('watch requires mint and an optional Boolean arm')
             inst = state['universe'].get(args['mint'])
             if not inst or inst['status'] not in {'eligible','watched','negotiable'}:
-                raise ValueError('Mint não elegível')
+                raise ValueError('Mint is not eligible')
             active = sum(1 for v in state['universe'].values() if v['status'] in {'watched','negotiable'})
             if inst['status'] == 'eligible' and active >= self.cfg.max_watched:
-                raise ValueError('Livro vigiado cheio')
+                raise ValueError('Watched book is full')
             inst['status'] = 'negotiable' if args.get('arm',False) else 'watched'
             inst['reasons'] = []
             self.store.save(db,state)
             self.store.event(db,int(time.time()),'watch',inst)
             return inst
         if set(args) != {'mint'}:
-            raise ValueError('unwatch exige mint')
+            raise ValueError('unwatch requires mint')
         if args['mint'] == self.cfg.mint:
-            raise ValueError('Mint âncora não sai do livro')
+            raise ValueError('Anchor mint cannot leave the book')
         inst = state['universe'].get(args['mint'])
         if not inst or inst['status'] not in {'watched','negotiable'}:
-            raise ValueError('Mint não está vigiado')
+            raise ValueError('Mint is not watched')
         inst['status'] = 'eligible'
         state['pending_book'].pop(args['mint'],None)
         self.store.save(db,state)
@@ -370,20 +370,20 @@ class Service:
     def _ingest_series(self,db,state,book,b,s,args):
         inst = state['universe'].get(b.mint)
         if not inst or inst['status'] not in {'watched','negotiable'}:
-            raise ValueError('Mint fora do livro vigiado')
+            raise ValueError('Mint is outside the watched book')
         slot = state['series'].setdefault(b.mint,dict(history=[],snapshot=None,last_timestamp=None,last_digest=None,last_price=None,bars_processed=0))
         digest = hashlib.sha256(canonical(args).encode()).hexdigest()
         if b.timestamp == slot['last_timestamp']:
             if digest != slot['last_digest']:
-                raise ValueError('Barra já processada com conteúdo diferente')
+                raise ValueError('Bar was already processed with different content')
             return dict(result='duplicate_bar',timestamp=b.timestamp,mint=b.mint)
         if slot['last_timestamp'] is not None and b.timestamp != slot['last_timestamp']+self.cfg.timeframe_seconds:
-            raise ValueError('Barras fora de ordem ou lacuna: reconstituir feed antes de continuar')
+            raise ValueError('Bars are out of order or contain a gap; restore the feed before continuing')
         end = b.timestamp+self.cfg.timeframe_seconds
         if end > time.time()+5:
-            raise ValueError('Barra ainda não fechada no horário UTC atual')
+            raise ValueError('Bar is not yet closed at the current UTC time')
         if s.timestamp > end or (s.available_at is not None and s.available_at > end):
-            raise ValueError('Snapshot do futuro em relação à barra')
+            raise ValueError('Snapshot is from the future relative to the bar')
         broker = PaperBroker(book,self.cfg)
         events = []
         mark = self._marks(state,b.mint,b.open)
@@ -414,10 +414,10 @@ class Service:
         if f.get('ready'):
             broker.trail(b.close,f['atr'],b.mint)
         if slot['bars_processed']+1 < self.cfg.warmup_bars:
-            p,audit = replace(Proposal(thesis='Aquecimento obrigatório'),mint=b.mint),{'gate':'warmup','mode':self.council.mode}
+            p,audit = replace(Proposal(thesis='Warmup is required'),mint=b.mint),{'gate':'warmup','mode':self.council.mode}
         elif inst['status'] != 'negotiable':
             # Watched mints only collect features; the council is not consulted.
-            p,audit = replace(Proposal(thesis='Mint vigiado, ainda não negociável'),mint=b.mint),{'gate':'watched_only','mode':self.council.mode}
+            p,audit = replace(Proposal(thesis='Mint is watched but not yet negotiable'),mint=b.mint),{'gate':'watched_only','mode':self.council.mode}
         else:
             p,audit = self._decide(state,f,s,book,end)
         a = approve(p,f,s,book,self.cfg,end,instrument=inst)
@@ -437,7 +437,7 @@ class Service:
         state = self.store.load(db)
         if state:
             if state['config_hash'] != self.fingerprint or state['agent_mode'] != self.council.mode:
-                raise ValueError('Config/modo diferente da sessão persistida; use outro banco para nova pesquisa')
+                raise ValueError('Configuration or mode differs from the persisted session; use a separate database for new research')
             return self._ensure(state)
         book = Portfolio(self.cfg.initial_usdc,self.cfg.initial_usdc,self.cfg.initial_usdc)
         return self._ensure(dict(config_hash=self.fingerprint,agent_mode=self.council.mode,
@@ -520,9 +520,9 @@ class Service:
     def _serialized_command(self,name,args,key):
         allowed = {'ingest','paper_tick','analyze','evaluate','halt','finalize','universe','admit','watch','unwatch','prepare_decision','submit_decision','execution_check'}
         if not isinstance(name,str) or name not in allowed:
-            raise ValueError('Comando desconhecido ou não permitido')
+            raise ValueError('Unknown or disallowed command')
         if not isinstance(args,dict):
-            raise ValueError('args deve ser um objeto')
+            raise ValueError('args must be an object')
         request = dict(command=name,args=args)
         with self.store.connect() as db:
             state = self._load(db)  # reject incompatible persisted sessions before any network IO
@@ -532,9 +532,9 @@ class Service:
             if name in {'paper_tick','ingest'}:
                 mode = 'paper_live' if name == 'paper_tick' else 'replay'
                 if state.get('input_mode') not in (None,mode):
-                    raise ValueError('Não misture paper-live e replay no mesmo banco')
+                    raise ValueError('Do not mix paper-live and replay in the same database')
         if name=='prepare_decision' and (args or self.council.mode!='external'):
-            raise ValueError('prepare_decision exige modo external e nenhum argumento')
+            raise ValueError('prepare_decision requires external mode and no arguments')
         if name=='prepare_decision' and task_is_current(state.get('external_task'),state,time.time()):
             with self.store.transaction() as db:
                 current=self._load(db)
@@ -542,26 +542,26 @@ class Service:
                     return self.store.once(db,key,request,lambda:dict(
                         result='awaiting_external_agents',task=current['external_task'],reused=True))
         if name=='submit_decision' and (state.get('external_task') or {}).get('protocol')!='external-session-v2':
-            raise ValueError('Tarefa de protocolo antigo ou ausente; execute prepare_decision novamente')
+            raise ValueError('Task uses an old protocol or is missing; run prepare_decision again')
         if name=='submit_decision':
             if (set(args)!={'task_id','evidence_sha256','reports','decision','session_id'}
                     or not isinstance(args['decision'],dict) or not isinstance(args['reports'],dict)
                     or args['decision'].get('action') not in {'LONG','HOLD','CLOSE'}
                     or not isinstance(args['session_id'],str) or not 1<=len(args['session_id'])<=200):
-                raise ValueError('Contrato de submissão inválido; nenhuma coleta ou execução iniciada')
+                raise ValueError('Invalid submission contract; no collection or execution started')
             task=state.get('external_task')
             if not task_is_current(task,state,time.time()) or args.get('task_id')!=task['id']:
-                raise ValueError('Tarefa expirada, substituída ou contexto material mudou; prepare novamente')
+                raise ValueError('Task expired, was replaced, or material context changed; prepare again')
             if args.get('evidence_sha256')!=task['evidence_sha256']:
-                raise ValueError('Evidências divergentes')
+                raise ValueError('Evidence mismatch')
         if name=='execution_check':
             self._validate_execution_check(args)
             if state.get('input_mode') not in (None,'paper_live'):
-                raise ValueError('Checagem operacional não aceita replay')
+                raise ValueError('Operational checks do not accept replay')
             if args['action']=='OPEN' and (state['portfolio'].get('positions') or state.get('execution_check')):
-                raise ValueError('Checagem exige carteira sem posição/checagem aberta')
+                raise ValueError('Check requires an account without an open position or active check')
             if args['action']=='CLOSE' and (state.get('execution_check') or {}).get('check_id')!=args['check_id']:
-                raise ValueError('check_id não corresponde à checagem aberta')
+                raise ValueError('check_id does not match the active check')
         paper_data = self._collect_paper_data(args) if name == 'paper_tick' else None
         if name=='execution_check':
             if args['action']=='OPEN':
@@ -581,7 +581,7 @@ class Service:
             # Reasoning runs in the caller's session. Refresh execution observations
             # outside the write transaction; bind the submission again inside it.
             if not state['history']:
-                raise ValueError('Feed obrigatório')
+                raise ValueError('Feed is required')
             provider=self._provider or CoinbaseMarket()
             candles=[Candle(**row) for row in state['history']]
             risk_candles=(provider.candles(self.cfg.mint,count=120,aggregate=self.cfg.timeframe_seconds)
@@ -614,14 +614,14 @@ class Service:
     def _collect_paper_data(self,args):
         """Fetch public data before opening the SQLite write transaction."""
         if args:
-            raise ValueError('paper_tick não aceita argumentos; coleta fontes Solana read-only')
+            raise ValueError('paper_tick accepts no arguments; it collects read-only Coinbase SOL data')
         if self.cfg.execution != 'paper' or self.cfg.chain != 'solana':
-            raise ValueError('paper_tick exige execução paper exclusivamente na Solana')
+            raise ValueError('paper_tick requires SOL paper execution')
         if set(self.cfg.allowed_markets) != {'spot'}:
-            raise ValueError('paper_tick exige mercado spot')
+            raise ValueError('paper_tick requires the spot market')
         step = self.cfg.timeframe_seconds
         if step % 60 or step // 60 not in {1,5,15}:
-            raise ValueError('timeframe paper deve ser 1, 5 ou 15 minutos')
+            raise ValueError('Paper timeframe must be 1, 5 or 15 minutes')
         # Read the last committed bar to avoid fetching a new quote when no new candle exists.
         with self.store.connect() as db:
             state = self._load(db)
@@ -630,7 +630,7 @@ class Service:
         provider = self._provider
         candles = provider.candles(self.cfg.mint, count=120, aggregate=step)
         if int(time.time()) - (candles[-1].timestamp+step) > step:
-            raise DataError('Feed Coinbase atrasado; ciclo bloqueado')
+            raise DataError('Coinbase feed is delayed; cycle blocked')
         snap = None
         if state['last_timestamp'] is not None and (candles[-1].timestamp > state['last_timestamp'] or state['portfolio'].get('positions')):
             # Coinbase book timestamp must remain the original observation time.
@@ -642,7 +642,7 @@ class Service:
                 snap=collect(self.cfg.mint,market=lambda:provider.market(
                     self.cfg.mint,candles=candles,timeframe_seconds=step))
         if int(time.time())-(candles[-1].timestamp+step)>step:
-            raise DataError('Candles expiraram durante coleta; ciclo bloqueado')
+            raise DataError('Candles became stale during collection; cycle blocked')
         if snap is not None:self._require_fresh_mark(snap)
         return dict(candles=candles,snapshot=snap)
     def _command(self,db,name,args,paper_data=None):
@@ -653,7 +653,7 @@ class Service:
         if name in {'paper_tick','ingest'}:
             mode = 'paper_live' if name == 'paper_tick' else 'replay'
             if state.get('input_mode') not in (None,mode):
-                raise ValueError('Não misture paper-live e replay no mesmo banco')
+                raise ValueError('Do not mix paper-live and replay in the same database')
             state['input_mode'] = mode
         if name in {'universe','admit','watch','unwatch'}:
             return self._universe(db,state,name,args)
@@ -662,13 +662,13 @@ class Service:
             candles = paper_data['candles']
             if state['last_timestamp'] is None:
                 if len(candles) < self.cfg.warmup_bars:
-                    raise ValueError('OHLCV Coinbase insuficiente para aquecimento')
+                    raise ValueError('Insufficient Coinbase OHLCV for warmup')
                 history = candles[-self.cfg.warmup_bars:]
                 for left,right in zip(history,history[1:]):
                     if right.timestamp != left.timestamp+step:
-                        raise ValueError('Lacuna no OHLCV de aquecimento')
+                        raise ValueError('Gap in warmup OHLCV')
                 if history[-1].timestamp+step > time.time()+5:
-                    raise ValueError('Última barra de aquecimento ainda está aberta')
+                    raise ValueError('Last warmup bar is still open')
                 state['history'] = [asdict(b) for b in history]
                 state['last_timestamp'] = history[-1].timestamp
                 state['last_price'] = history[-1].close
@@ -679,7 +679,7 @@ class Service:
                                   bars=len(history),last_timestamp=history[-1].timestamp,
                                   last_price=history[-1].close))
                 return dict(result='warmed_up',bars=len(history),last_bar=history[-1].timestamp,
-                            next_action='prepare_decision pode coletar snapshot atual; nenhum trade no aquecimento')
+                            next_action='prepare_decision can collect a current snapshot; warmup does not trade')
             next_ts = state['last_timestamp']+step
             bar = next((b for b in candles if b.timestamp == next_ts),None)
             if bar is None:
@@ -704,7 +704,7 @@ class Service:
                 if book.positions or state['pending']:
                     snap = paper_data['snapshot']
                     if snap is None or not -5 <= int(time.time())-snap.timestamp <= 30:
-                        raise DataError('Snapshot atual obrigatório para recuperar gap')
+                        raise DataError('A current snapshot is required for gap recovery')
                     # An unobserved interval cannot supply historical stop fills.
                     # Close at the current mark and latch the safety halt.
                     book.halted,book.halt_reason = True,'feed_gap'
@@ -720,7 +720,7 @@ class Service:
                 history = candles[-self.cfg.warmup_bars:]
                 if len(history) < self.cfg.warmup_bars or any(
                         right.timestamp != left.timestamp+step for left,right in zip(history,history[1:])):
-                    raise ValueError('Gap no feed; candles recentes insuficientes para reaquecer com segurança')
+                    raise ValueError('Feed gap; insufficient recent candles for safe rewarm')
                 state['history'] = [asdict(b) for b in history]
                 state['last_timestamp'] = history[-1].timestamp
                 state['last_price'] = history[-1].close
@@ -737,34 +737,34 @@ class Service:
                     reason='feed_gap_halted' if book.halted else 'gap_without_open_position'))
                 return dict(result='resynchronized',bars=len(history),last_bar=history[-1].timestamp,
                             events=recovery_events,halted=book.halted,
-                            next_action='intervenção requerida' if book.halted else 'indicadores reaquecidos; nenhum fill retroativo')
+                            next_action='Operator intervention required' if book.halted else 'Indicators rewarmed; no retrospective fills')
             snap = paper_data['snapshot']
             if snap is None:
-                raise ValueError('Snapshot Solana indisponível para a barra fechada; nada foi negociado')
+                raise ValueError('SOL snapshot unavailable for the closed bar; nothing traded')
             payload = dict(candle=asdict(bar),snapshot=asdict(snap))
             return self._paper_tick(db,state,book,bar,snap,payload)
         if name == 'ingest':
             if set(args) != {'candle','snapshot'}:
-                raise ValueError('ingest exige somente candle e snapshot')
+                raise ValueError('ingest requires only candle and snapshot')
             b,s = Candle(**args['candle']),Snapshot(**args['snapshot'])
             if b.mint != s.mint:
-                raise ValueError('candle e snapshot de mints diferentes')
+                raise ValueError('candle and snapshot have different mints')
             if b.chain != self.cfg.chain or s.chain != self.cfg.chain:
-                raise ValueError('Barra de outra rede')
+                raise ValueError('Bar belongs to another chain')
             if b.mint != self.cfg.mint:
                 return self._ingest_series(db,state,book,b,s,args)
             digest = hashlib.sha256(canonical(args).encode()).hexdigest()
             if b.timestamp == state['last_timestamp']:
                 if digest != state['last_digest']:
-                    raise ValueError('Barra já processada com conteúdo diferente')
+                    raise ValueError('Bar was already processed with different content')
                 return dict(result='duplicate_bar',timestamp=b.timestamp)
             if state['last_timestamp'] is not None and b.timestamp != state['last_timestamp']+self.cfg.timeframe_seconds:
-                raise ValueError('Barras fora de ordem ou lacuna: reconstituir feed antes de continuar')
+                raise ValueError('Bars are out of order or contain a gap; restore the feed before continuing')
             end = b.timestamp+self.cfg.timeframe_seconds
             if end > time.time()+5:
-                raise ValueError('Barra ainda não fechada no horário UTC atual')
+                raise ValueError('Bar is not yet closed at the current UTC time')
             if s.timestamp > end or (s.available_at is not None and s.available_at > end):
-                raise ValueError('Snapshot do futuro em relação à barra')
+                raise ValueError('Snapshot is from the future relative to the bar')
             broker = PaperBroker(book,self.cfg)
             events = []
             mark = self._marks(state,b.mint,b.open)
@@ -795,7 +795,7 @@ class Service:
             if f.get('ready'):
                 broker.trail(b.close,f['atr'],b.mint)
             if state['bars_processed']+1 < self.cfg.warmup_bars:
-                p,audit = replace(Proposal(thesis='Aquecimento obrigatório'),mint=b.mint),{'gate':'warmup','mode':self.council.mode}
+                p,audit = replace(Proposal(thesis='Warmup is required'),mint=b.mint),{'gate':'warmup','mode':self.council.mode}
             else:
                 p,audit = self._decide(state,f,s,book,end)
             a = approve(p,f,s,book,self.cfg,end,instrument=state['universe'].get(b.mint))
@@ -814,7 +814,7 @@ class Service:
             return dict(result='processed',timestamp=b.timestamp,decision=decision,events=events,equity_usdc=equity)
         if name == 'halt':
             if args:
-                raise ValueError('halt não aceita argumentos')
+                raise ValueError('halt accepts no arguments')
             book.halted,book.halt_reason = True,'operator_halt'
             state['pending'] = None
             state['pending_book'] = {}
@@ -825,9 +825,9 @@ class Service:
             return dict(result='halted',flatten='next_valid_bar',open_positions=len(book.positions))
         if name == 'finalize':
             if args:
-                raise ValueError('finalize não aceita argumentos')
+                raise ValueError('finalize accepts no arguments')
             if state['last_price'] is None:
-                raise ValueError('Nenhuma barra para finalizar')
+                raise ValueError('No bars available to finalize')
             broker = PaperBroker(book,self.cfg)
             ts = state['last_timestamp']+self.cfg.timeframe_seconds
             events = self._flatten_known(broker,state,ts,'end_of_research')
@@ -846,7 +846,7 @@ class Service:
                 state['snapshot']=asdict(fresh)
                 state['last_price']=fresh.price
         if not state['history'] or not state['snapshot']:
-            raise ValueError('Ainda não há feed: envie barras fechadas e snapshot via ingest')
+            raise ValueError('No feed yet: supply closed bars and a snapshot through ingest')
         f = features([Candle(**x) for x in state['history']])
         s = Snapshot(**state['snapshot'])
         # Analysis uses the last closed bar timestamp. Live freshness status separately.
@@ -868,7 +868,7 @@ class Service:
                                          risk_candles=(paper_data or {}).get('risk_candles'))
         if name == 'analyze':
             if args:
-                raise ValueError('analyze não aceita argumentos')
+                raise ValueError('analyze accepts no arguments')
             p,audit = self._decide(state,f,s,book,now)
             self.store.save(db,state)  # analysis never schedules a trade
             result = dict(features=f,snapshot=asdict(s),proposal=asdict(p),council=audit,
@@ -876,7 +876,7 @@ class Service:
                           wallclock_age_seconds=int(time.time())-now)
         else:
             if set(args) != {'proposal'}:
-                raise ValueError('evaluate exige somente proposal')
+                raise ValueError('evaluate requires only proposal')
             p = Proposal(**args['proposal'])
             result = dict(approval=asdict(approve(p,f,s,book,self.cfg,now)),
                           proposal=asdict(p),execution='none',as_of=now)
@@ -886,18 +886,18 @@ class Service:
     def _paper_tick(self,db,state,book,b,s,payload):
         """Forward-only spot paper cycle using current Solana pool observations."""
         if b.mint != self.cfg.mint or s.mint != self.cfg.mint or b.chain != 'solana' or s.chain != 'solana':
-            raise ValueError('paper_tick aceita somente o mint Solana configurado')
+            raise ValueError('paper_tick accepts only the configured SOL mint')
         if s.source != 'coinbase_advanced_sol_spot' or s.product_id!='SOL-USDC':
-            raise ValueError('Snapshot não veio do produto Coinbase configurado')
+            raise ValueError('Snapshot is not from the configured Coinbase product')
         now = int(time.time())
         if s.timestamp > now+5 or now-s.timestamp > min(30,self.cfg.max_snapshot_age_seconds):
-            raise DataError('Snapshot Solana futuro ou stale')
+            raise DataError('SOL snapshot is future-dated or stale')
         if b.timestamp+self.cfg.timeframe_seconds > now+5:
-            raise ValueError('Barra OHLCV ainda aberta')
+            raise ValueError('OHLCV bar is still open')
         if s.timestamp < b.timestamp+self.cfg.timeframe_seconds:
-            raise DataError('Cotação anterior ao fechamento do candle; ciclo bloqueado')
+            raise DataError('Quote predates candle close; cycle blocked')
         if state['last_timestamp'] is None or b.timestamp != state['last_timestamp']+self.cfg.timeframe_seconds:
-            raise ValueError('Barra paper fora de sequência; sem preenchimentos retroativos')
+            raise ValueError('Paper bar is out of sequence; no retrospective fills')
         digest = hashlib.sha256(canonical(payload).encode()).hexdigest()
         broker = PaperBroker(book,self.cfg)
         events = broker.on_bar(b)
@@ -912,7 +912,7 @@ class Service:
             broker.trail(s.price,f['atr'],b.mint)
         p,audit = self._decide(state,f,s,book,s.timestamp)
         if int(time.time())-s.timestamp > min(30,self.cfg.max_snapshot_age_seconds):
-            audit['error'] = 'Cotação expirou durante a decisão; entrada bloqueada'
+            audit['error'] = 'Quote expired during the decision; entry blocked'
             p = replace(Proposal(thesis=audit['error']),mint=b.mint)
         approval = approve(p,f,s,book,self.cfg,s.timestamp,s.price,state['universe'].get(b.mint))
         if p.action == 'CLOSE':

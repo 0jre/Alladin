@@ -20,10 +20,10 @@ def diagnose(cfg):
     def market():
         candles=provider.candles(cfg.mint,120,cfg.timeframe_seconds)
         if time.time()-(candles[-1].timestamp+cfg.timeframe_seconds)>cfg.timeframe_seconds:
-            raise DataError('Feed Coinbase atrasado',code='stale_data',source='coinbase_candles')
+            raise DataError('Coinbase feed is delayed',code='stale_data',source='coinbase_candles')
         quote=provider.market(cfg.mint,candles,cfg.timeframe_seconds)
         if time.time()-(candles[-1].timestamp+cfg.timeframe_seconds)>cfg.timeframe_seconds:
-            raise DataError('Candles expiraram durante a coleta; atualize o contexto',code='stale_data',source='coinbase_candles')
+            raise DataError('Candles became stale during collection; refresh the context',code='stale_data',source='coinbase_candles')
         return dict(closed_bars=len(candles),last_closed_at=candles[-1].timestamp+cfg.timeframe_seconds,
                     observed_at=quote['observed_at'],price=quote['price'],source=quote['source'])
     check('coinbase_market',market)

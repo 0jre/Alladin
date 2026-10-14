@@ -29,7 +29,7 @@ def candidate_economics(proposals,f,s,book,cfg,now):
 
 def evidence_envelope(f,s,book,cfg,proposals,now,memory=()):
     if f.get('bar_closed_at',now)>now:
-        raise ValueError('Indicadores posteriores ao instante da decisão')
+        raise ValueError('Indicators are later than decision time')
     portfolio=book.serialize()
     portfolio['closed']=portfolio['closed'][-20:]
     envelope=dict(schema_version='1.0',as_of=now,
@@ -57,7 +57,7 @@ def evidence_envelope(f,s,book,cfg,proposals,now,memory=()):
             for i,item in enumerate(value):visit(item,path+'.'+str(i))
         elif value is not None:
             if isinstance(value,float) and not math.isfinite(value):
-                raise ValueError('Evidência numérica não finita')
+                raise ValueError('Nonfinite numeric evidence')
             source=(s.source if path.startswith('snapshot.') else
                     'computed_closed_candles' if path.startswith('features.') else 'backend')
             available=(s.timestamp if path.startswith('snapshot.') else

@@ -1,4 +1,4 @@
-"""Funil de mints: observar, classificar, admitir. Não envia ordem."""
+"""Research mint funnel: observe, classify, admit. Does not submit orders."""
 import struct
 from .models import SOL, TOKEN_PROGRAM, TOKEN_2022
 
@@ -22,23 +22,23 @@ def seed_primary(mint):
                 extensions=[], updated_at=0)
 
 def decode_mint_account(data):
-    """Decodifica mint SPL ou Token-2022. Extensão desconhecida não é silenciosa."""
+    """Decode a historical SPL/Token-2022 mint; unknown extensions fail explicitly."""
     if not isinstance(data, (bytes, bytearray)) or len(data) < 82:
-        raise ValueError('Conta de mint curta demais')
+        raise ValueError('Mint account is too short')
     if data[45] != 1:
-        raise ValueError('Mint não inicializado')
+        raise ValueError('Mint is not initialized')
     decimals = data[44]
     if not 0 <= decimals <= 18:
-        raise ValueError('Decimais inválidos')
+        raise ValueError('Invalid decimals')
     mint_authority = data[4:36] if int.from_bytes(data[0:4], 'little') else None
     freeze_authority = data[50:82] if int.from_bytes(data[46:50], 'little') else None
     if len(data) == 82:
         return dict(decimals=decimals, mint_authority=mint_authority, freeze_authority=freeze_authority,
                     extensions=(), extensions_decoded=True, transfer_fee_bps=None)
     if len(data) < TLV_START or data[ACCOUNT_TYPE_INDEX] != MINT_ACCOUNT_TYPE:
-        raise ValueError('Token-2022 sem AccountType de mint no offset 165')
+        raise ValueError('Token-2022 mint AccountType is missing at offset 165')
     if any(data[82:ACCOUNT_TYPE_INDEX]):
-        raise ValueError('Padding do mint Token-2022 não é zero')
+        raise ValueError('Token-2022 mint padding is nonzero')
     extensions = []
     transfer_fee_bps = None
     start = TLV_START
@@ -51,7 +51,7 @@ def decode_mint_account(data):
         value = raw[start + 4:value_end]
         name = EXTENSIONS.get(typ)
         if name is None:
-            raise ValueError(f'Extensão Token-2022 não decodificada: {typ}')
+            raise ValueError(f'Undecoded Token-2022 extension: {typ}')
         if name == 'default_account_state' and value and value[0] == FROZEN_STATE:
             name = 'default_frozen'
         if name == 'transfer_fee' and len(value) >= 2:

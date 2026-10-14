@@ -1,7 +1,7 @@
-"""One Solana-only command path shared by HTTP and MCP."""
+"""One Coinbase SOL-USDC paper command path shared by HTTP and MCP."""
 
 
 def execute(service, name, args, key):
     if not isinstance(name, str) or not isinstance(args, dict):
-        raise ValueError('Comando inválido')
+        raise ValueError('Invalid command')
     return service.command(name, args, key)

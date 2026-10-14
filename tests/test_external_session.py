@@ -156,7 +156,7 @@ class ExternalSessionTests(unittest.TestCase):
             task=self.prepare()
         with patch('alladin.engine.time.time',return_value=2000),patch('alladin.engine.collect',return_value=replace(fresh,timestamp=2000)),patch('alladin.providers.CoinbaseMarket.candles',return_value=[Candle(0,100,101,99,100,10000)]):
             from alladin.transport import DataError
-            with self.assertRaisesRegex(DataError,'Feed fechado'):
+            with self.assertRaisesRegex(DataError,'Closed feed'):
                 self.service.command('submit_decision',self.submission(task),'stale-bars')
 
     def test_live_stale_execution_quote_blocks_entry(self):

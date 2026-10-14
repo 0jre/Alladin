@@ -6,28 +6,28 @@ from .engine import Service
 from .research import jsonl_feed,export
 
 def assert_causal_feed(rows,timeframe):
-    """Recusa snapshot, disponibilidade ou mint que a decisão da barra ainda não podia ver."""
+    """Reject snapshots, availability or mints not yet visible at the bar decision time."""
     previous = {}
     for b,s in rows:
         if s.mint != b.mint:
-            raise ValueError('Lookahead: mint divergente entre candle e snapshot')
+            raise ValueError('Lookahead: candle and snapshot mints differ')
         end = b.timestamp+timeframe
         if s.timestamp > end or (s.available_at is not None and s.available_at > end):
-            raise ValueError('Lookahead: dado posterior ao fechamento')
+            raise ValueError('Lookahead: data is later than bar close')
         prev = previous.get(b.mint)
         if prev is not None and b.timestamp != prev+timeframe:
-            raise ValueError('Lacuna no feed de validação')
+            raise ValueError('Gap in validation feed')
         previous[b.mint] = b.timestamp
     return sorted(previous)
 
 def validate(cfg,feed_path,output,folds=3):
     if not 2 <= folds <= 10:
-        raise ValueError('folds deve estar entre 2 e 10')
+        raise ValueError('folds must be between 2 and 10')
     rows=list(jsonl_feed(feed_path))
     cohorts=assert_causal_feed(rows,cfg.timeframe_seconds)
     available=len(rows)-cfg.warmup_bars
     if available < folds*40:
-        raise ValueError('Feed precisa de warmup + pelo menos 40 barras de avaliação por fold')
+        raise ValueError('Feed requires warmup plus at least 40 evaluation bars per fold')
     out=Path(output)
     out.mkdir(parents=True,exist_ok=True)
     results=[]
@@ -41,7 +41,7 @@ def validate(cfg,feed_path,output,folds=3):
             folder.mkdir(exist_ok=True)
             db=folder/'session.sqlite'
             if db.exists():
-                raise ValueError('Pasta de validação já contém sessão; escolha outro output')
+                raise ValueError('Validation directory already contains a session; choose another output')
             service=Service(stress_cfg,db,'rules')
             # Context is earlier data only; no entry until the first evaluation bar.
             armed = {stress_cfg.mint}
@@ -59,8 +59,8 @@ def validate(cfg,feed_path,output,folds=3):
             results.append(summary)
     report=dict(method='fixed_parameter_chronological_folds',folds=folds,
                 optimized=False,external_agents_evaluated=False,cohorts=cohorts,results=results,
-                warnings=['Sem otimização ou seleção pelo retorno desses folds.',
-                          'Indicadores recebem apenas warmup anterior; conta reinicia por fold.',
-                          'Dados sintéticos continuam sintéticos; executar em histórico real antes de inferir vantagem.'])
+                warnings=['No optimization or selection based on these fold returns.',
+                          'Indicators receive prior warmup only; the account is initialized separately per fold.',
+                          'Synthetic data remains synthetic; evaluate real history before inferring edge.'])
     (out/'validation.json').write_text(json.dumps(report,indent=2,ensure_ascii=False,allow_nan=False))
     return report

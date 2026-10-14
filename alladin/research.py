@@ -24,7 +24,7 @@ def demo_feed(count=600,seed=42,timeframe=900):
         s = Snapshot(ts+timeframe,price=price,liquidity_usd=10000000,volume_24h_usd=50000000,
                      buy_sell_imbalance=rng.uniform(-.2,.2),account_checked=True,cluster_verified=True,
                      source='SYNTHETIC_FIXTURE',
-                     warnings=('Todos os campos de mercado e segurança são sintéticos.',))
+                     warnings=('All market and security fields are synthetic.',))
         yield b,s
 
 def jsonl_feed(path):
@@ -35,10 +35,10 @@ def jsonl_feed(path):
             try:
                 d = json.loads(line)
                 if set(d) != {'candle','snapshot'}:
-                    raise ValueError('Esperado candle e snapshot')
+                    raise ValueError('Expected candle and snapshot')
                 yield Candle(**d['candle']),Snapshot(**d['snapshot'])
             except (ValueError,KeyError,TypeError) as e:
-                raise ValueError(f'Feed inválido na linha {line_no}: {e}') from None
+                raise ValueError(f'Invalid feed at line {line_no}: {e}') from None
 
 def write_demo(path,count=600):
     p = Path(path)
@@ -84,9 +84,9 @@ def export(service,destination):
                    bar_return_mean=mean(returns) if returns else None,
                    bar_return_std=pstdev(returns) if returns else None,
                    halted=service.status()['halted'],halt_reason=service.status()['halt_reason'],
-                   warnings=['Dados sintéticos não medem vantagem preditiva nem prontidão de produção.',
-                             'Fills usam premissas de custo e não são cotação/execução de rota.',
-                             'Sem Sharpe anualizado: intervalo/amostra não justificam extrapolação.'])
+                   warnings=['Synthetic data does not measure predictive edge or production readiness.',
+                             'Fills use cost assumptions and are not route quotes or executions.',
+                             'No annualized Sharpe: the interval and sample do not justify extrapolation.'])
     (out/'summary.json').write_text(json.dumps(summary,indent=2,ensure_ascii=False,allow_nan=False))
     with (out/'equity.csv').open('w',newline='') as f:
         w = csv.DictWriter(f,fieldnames=['timestamp','equity'])

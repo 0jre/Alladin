@@ -38,11 +38,11 @@ class PromptLibrary:
             self.catalog=catalog
             self.bundle_hash=hashlib.sha256(json.dumps(catalog,sort_keys=True,separators=(',',':')).encode()).hexdigest()
         except (OSError,ValueError,TypeError,KeyError,UnicodeError,AttributeError):
-            raise DataError('Pacote de prompts ausente, inválido ou alterado') from None
+            raise DataError('Prompt package is missing, invalid or modified') from None
 
     def render(self,role,regime=None):
         if role not in self.ROLES:
-            raise DataError('Papel de agente desconhecido')
+            raise DataError('Unknown agent role')
         item=self.catalog['roles'][role]
         names=[self.catalog['system'],item['file'],*item['skills']]
         if role in {'market','challenger','manager'} and regime in self.catalog['regimes']:

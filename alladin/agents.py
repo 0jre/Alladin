@@ -48,25 +48,25 @@ DECISION_SCHEMA['required']=list(DECISION_SCHEMA['properties'])
 def validate_references(refs,allowed,required=False):
     if (not isinstance(refs,list) or len(refs)>20 or any(not isinstance(x,str) or len(x)>200 for x in refs)
             or len(refs)!=len(set(refs)) or set(refs)-set(allowed) or required and not refs):
-        raise DataError('Referências de evidência inválidas ou ausentes')
+        raise DataError('Invalid or missing evidence references')
 
 
 def validate_report(r,allowed_keys):
     if not isinstance(r,dict) or set(r) != set(REPORT_SCHEMA['required']):
-        raise DataError('Contrato de relatório inválido')
+        raise DataError('Invalid report contract')
     if not isinstance(r['stance'],str) or r['stance'] not in {'LONG','SHORT','HOLD','CLOSE'}:
-        raise DataError('Stance inválido')
+        raise DataError('Invalid stance')
     finite(r['score'],'report.score',0,1)
     if type(r['blocking']) is not bool or r['score_is_probability'] is not False:
-        raise DataError('Bloqueio inválido ou score apresentado como probabilidade')
+        raise DataError('Invalid blocking flag or score presented as a probability')
     for name in ['summary','invalidation']:
         if not isinstance(r[name],str) or not 1 <= len(r[name]) <= 2000:
-            raise DataError('Resumo/invalidação inválidos')
+            raise DataError('Invalid summary or invalidation')
     for name in ['concerns','missing_data','risk_flags']:
         if not isinstance(r[name],list) or len(r[name])>20 or any(not isinstance(x,str) or len(x)>500 for x in r[name]):
-            raise DataError('Lista de relatório inválida')
+            raise DataError('Invalid report list')
     if set(r['risk_flags'])-set(RISK_FLAGS):
-        raise DataError('Risco desconhecido')
+        raise DataError('Unknown risk flag')
     validate_references(r['evidence_keys'],allowed_keys,required=r['stance']!='HOLD')
     return r
 
@@ -74,7 +74,7 @@ def validate_report(r,allowed_keys):
 class Council:
     def __init__(self,mode='external',prompts=None):
         if mode not in {'rules','external'}:
-            raise ValueError('agent_mode deve ser external ou rules')
+            raise ValueError('agent_mode must be external or rules')
         self.mode=mode
         self.prompts=prompts or PromptLibrary()
         self.memory=[]
@@ -88,20 +88,20 @@ class Council:
                 ideas.append(Proposal(**{**asdict(p),'mint':s.mint}))
             elif existing.side!=side:
                 ideas.append(Proposal('CLOSE',p.market,p.confidence,p.stop_fraction,p.take_fraction,
-                    p.horizon_bars,'Sinal quantitativo contrário à posição','signal_reversal',mint=s.mint))
+                    p.horizon_bars,'Quantitative signal opposes the position','signal_reversal',mint=s.mint))
         guard_reasons=security_checks(s,cfg,now)
-        baseline=ideas[0] if ideas else Proposal(thesis='Sem confluência suficiente',mint=s.mint)
+        baseline=ideas[0] if ideas else Proposal(thesis='Insufficient confluence',mint=s.mint)
         audit=dict(mode=self.mode,protocol='external-session-v2' if self.mode=='external' else 'deterministic-rules',
                    candidates=[asdict(p) for p in ideas],security_reasons=guard_reasons,reports={})
         if not f.get('ready') or guard_reasons or book.halted:
             audit['gate']='precheck_abstention'
-            return Proposal(thesis='Dados insuficientes ou bloqueio de segurança',mint=s.mint),audit
+            return Proposal(thesis='Insufficient data or safety block',mint=s.mint),audit
         if self.mode=='rules':
             audit['reports']={
                 'market':{'regime':f['regime'],'score':baseline.confidence},
                 'quality':{'warnings':list(s.warnings),'checks_passed':True},
                 'flow':{'organic_score':s.organic_score,'imbalance':s.buy_sell_imbalance},
-                'challenger':{'concerns':['Scores não calibrados','Alladin aceita somente Solana spot paper']},
+                'challenger':{'concerns':['Uncalibrated scores','Alladin supports only SOL spot paper execution']},
                 'manager':asdict(baseline)}
             return baseline,audit
         def abstain(reason,gate):
@@ -124,49 +124,49 @@ class Council:
                     instructions={role:self.prompts.render(role,f.get('regime'))
                                   for role in sorted(PromptLibrary.ROLES)},
                     stages=[['market','quality','flow'],['challenger'],['manager']])
-                return abstain('Aguardando decisão dos agentes da sessão externa','awaiting_external_agents')
+                return abstain('Awaiting a decision from the external session agents','awaiting_external_agents')
             if not isinstance(submission,dict) or set(submission)!={'reports','decision'}:
-                raise DataError('Submissão exige reports e decision')
+                raise DataError('Submission requires reports and decision')
             reports=submission['reports']
             if not isinstance(reports,dict) or set(reports)!={'market','quality','flow','challenger'}:
-                raise DataError('Quatro pareceres externos obrigatórios')
+                raise DataError('Four external assessments are required')
             for name in ['market','quality','flow','challenger']:
                 audit['reports'][name]=validate_report(deepcopy(reports[name]),allowed)
             vetoes=[name for name,r in audit['reports'].items() if r['blocking']]
             audit['vetoes']=vetoes
             if vetoes and not held:
-                return abstain('Analista bloqueou a entrada: '+','.join(vetoes),'analyst_veto')
+                return abstain('Analyst blocked entry: '+','.join(vetoes),'analyst_veto')
             decision=deepcopy(submission['decision'])
             if not isinstance(decision,dict) or set(decision)!=set(DECISION_SCHEMA['required']):
-                raise DataError('Contrato de decisão inválido')
+                raise DataError('Invalid decision contract')
             p=Proposal(**{k:v for k,v in decision.items() if k not in PLAN_FIELDS},mint=s.mint)
             directional=p.action in {'LONG','CLOSE'}
             validate_references(decision['evidence_keys'],allowed,required=directional)
             validate_references(decision['entry_conditions'],allowed,required=p.action=='LONG')
             validate_references(decision['counterevidence_keys'],allowed)
             if not isinstance(decision['invalidation'],str) or not 1<=len(decision['invalidation'])<=2000:
-                raise DataError('Invalidação de tese obrigatória')
+                raise DataError('Thesis invalidation is required')
             exits=decision['exit_conditions']
             allowed_exits=set(DECISION_SCHEMA['properties']['exit_conditions']['items']['enum'])
             if not isinstance(exits,list) or any(not isinstance(x,str) or x not in allowed_exits for x in exits) or len(exits)>10:
-                raise DataError('Condições de saída inválidas')
+                raise DataError('Invalid exit conditions')
             audit['reports']['manager']=decision
             if p.action=='CLOSE' and not held:
-                raise DataError('Não há posição para encerrar')
+                raise DataError('No position is available to close')
             if p.action=='LONG':
                 if 'configured_stop' not in exits:
-                    raise DataError('Entrada sem stop obrigatório')
+                    raise DataError('Entry is missing the required stop')
                 if not any(k.startswith('features.') for k in decision['evidence_keys']) or not any(k.startswith('snapshot.') for k in decision['evidence_keys']):
-                    raise DataError('Entrada exige evidência de mercado fechado e snapshot')
+                    raise DataError('Entry requires closed-market and snapshot evidence')
                 contrary=[name for name,r in audit['reports'].items() if name!='manager' and r['stance'] in {'SHORT','CLOSE'}]
                 supports=sum(audit['reports'][name]['stance']=='LONG' and audit['reports'][name]['score']>=cfg.min_confidence for name in ['market','quality','flow'])
                 if vetoes or contrary or supports<2:
-                    return abstain('Conselho sem consenso independente para entrada','consensus_abstention')
+                    return abstain('Council lacks sufficient directional agreement for entry','consensus_abstention')
                 check=approve(p,f,s,book,cfg,now,s.price)
                 audit['risk_recheck']=asdict(check)
                 if not check.approved:
-                    return abstain('Gestor alterou o plano além do risco permitido','manager_risk_veto')
+                    return abstain('Manager changed the plan beyond permitted risk','manager_risk_veto')
             return p,audit
         except (DataError,ValueError,KeyError,TypeError) as exc:
             audit['error']=str(exc)[:200]
-            return Proposal(thesis='Submissão externa inválida: abstenção',mint=s.mint),audit
+            return Proposal(thesis='Invalid external submission: abstention',mint=s.mint),audit

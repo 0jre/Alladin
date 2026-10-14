@@ -12,9 +12,9 @@ from .transport import DataError
 class PaperRunner:
     def __init__(self,service,poll_seconds=30,stop_event=None,emit=None):
         if type(poll_seconds) is not int or not 10 <= poll_seconds <= 300:
-            raise ValueError('poll-seconds precisa estar entre 10 e 300')
+            raise ValueError('poll-seconds must be between 10 and 300')
         if hasattr(service,'cfg') and service.cfg.timeframe_seconds not in {60,300,900}:
-            raise ValueError('Worker paper exige candles de 1, 5 ou 15 minutos')
+            raise ValueError('Paper worker requires 1-, 5- or 15-minute candles')
         if hasattr(service,'cfg'):
             service.status()  # incompatible/corrupt sessions must fail startup, not retry forever
         self.service,self.poll_seconds = service,poll_seconds
@@ -38,14 +38,14 @@ class PaperRunner:
 
     def run(self,max_cycles=None):
         if max_cycles is not None and (type(max_cycles) is not int or max_cycles<1):
-            raise ValueError('cycles deve ser um inteiro positivo')
+            raise ValueError('cycles must be a positive integer')
         path = Path(self.service.store.path).resolve()
         with open(str(path)+'.worker.lock','a') as lease:
             try:
                 fcntl.flock(lease.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
             except BlockingIOError:
                 self._update(last_error='worker_already_running')
-                raise ValueError('Já existe um worker para este banco') from None
+                raise ValueError('A worker already exists for this database') from None
             self._update(running=True)
             key = 'worker-'+uuid.uuid4().hex
             try:

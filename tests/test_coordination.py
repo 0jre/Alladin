@@ -187,7 +187,7 @@ class CoordinationTests(unittest.TestCase):
             return real_collect(*args, **kwargs)
 
         with patch('alladin.engine.collect', side_effect=change_account):
-            with self.assertRaisesRegex(ValueError, 'Contexto mudou'):
+            with self.assertRaisesRegex(ValueError, 'Context changed'):
                 self.service.command('submit_decision', self.submission(task, 'LONG'), 'open')
         self.assertEqual(self.service.status()['positions'], [])
 
@@ -247,7 +247,7 @@ class CoordinationTests(unittest.TestCase):
         task = self.prepare()
         self.now = task['expires_at'] + 1
         with patch('alladin.transport.HTTP.json', side_effect=AssertionError('Expired authority')):
-            with self.assertRaisesRegex(ValueError, 'expirada'):
+            with self.assertRaisesRegex(ValueError, 'expired'):
                 self.service.command('submit_decision', self.submission(task, 'LONG'), 'expired')
         self.service.command('paper_tick', {}, 'resync')
         new = self.service.command('prepare_decision', {}, 'new')['task']
@@ -298,7 +298,7 @@ class CoordinationTests(unittest.TestCase):
         for value in ('LONG', [], None):
             malformed = dict(args, decision=value)
             with patch('alladin.transport.HTTP.json', side_effect=AssertionError('Malformed request')):
-                with self.assertRaisesRegex(ValueError, 'Contrato'):
+                with self.assertRaisesRegex(ValueError, 'contract'):
                     self.service.command('submit_decision', malformed, 'bad-' + str(value))
         self.assertEqual(self.service.status()['external_task']['status'], 'prepared')
         self.assertEqual(self.service.status()['positions'], [])

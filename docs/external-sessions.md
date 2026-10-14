@@ -1,139 +1,162 @@
-# Protocolo para agentes da sessão
+# External session protocol
 
-Alladin é um servidor de ferramentas Python. ChatGPT Work, Claude, Grok, Codex,
-Claude CLI ou um processo de automação fornece o raciocínio usando os recursos da
-própria sessão. Não há inferência interna, seleção de modelo ou chave de provedor.
-Uma sessão precisa ter acesso efetivo ao transporte; este projeto não instala
-conectores automaticamente nessas plataformas.
+## Identity and authority
 
-## Início via MCP stdio, sem credenciais
+The protocol is `external-session-v2`, task binding version `2`. Alladin prepares
+evidence and checks submissions; the consuming session supplies reasoning. No
+inference provider, model, or AI key is configured in the service.
 
-```bash
-python -m alladin --config config.json --db data/external.sqlite mcp
-```
+An active worker or consumer-owned `paper_tick` loop must keep position protection
+running. `demo-live` exports observations/tasks but does not author or submit plans.
 
-Configure esse comando como servidor MCP no consumidor compatível. O transporte
-existente usa frames Content-Length; confirme compatibilidade no cliente. Em
-plataformas que só aceitam MCP remoto, integre o HTTP autenticado por uma ponte
-compatível. O token HTTP protege o backend e não pertence a um provedor de IA.
+## Prepare and inspect
 
-## Ciclo
+Call `prepare_decision` after warmup. A successful task includes:
 
-Chame `paper_tick` com chave idempotente nova por ciclo, até aquecer e processar
-uma barra. Chame `prepare_decision` sem argumentos. A resposta contém `task`:
-
-| Campo | Finalidade |
+| Field | Meaning |
 |---|---|
-| `id`, `protocol` | Identidade da tarefa e versão do protocolo |
-| `context_sha256`, `evidence_sha256` | Vínculo com autoridade material da conta e evidências congeladas |
-| `created_at`, `expires_at`, `status`, `binding_version` | Prazo de `min(300, 2 × timeframe)` segundos e consumo único; vínculo versão 2 |
-| `evidence` | Indicadores, snapshot, carteira, candidatos, custos, riscos e lacunas |
-| `instructions` | Prompts revisados dos cinco papéis |
-| `report_schema`, `decision_schema` | Contratos JSON exatos de saída |
-| `stages` | Mercado/qualidade/fluxo, contestador, gestor |
+| `id` | Exact task identity for submission |
+| `protocol`, `binding_version` | Compatibility surfaces |
+| `context_sha256` | Material account authority at preparation |
+| `evidence_sha256` | Exact frozen analytical evidence |
+| `created_at`, `expires_at`, `status` | Original deadline and consumption state |
+| `evidence` | Features, snapshot, portfolio, candidates, economics, configuration, missing domains, registry |
+| `instructions` | Reviewed role-specific prompt text |
+| `report_schema`, `decision_schema` | Actual required JSON contracts |
+| `stages` | Market/quality/flow, then challenger, then manager |
 
-O coordenador fornece a cada um dos três analistas apenas o envelope e seu prompt.
-Depois entrega os três relatórios ao contestador e os quatro ao gestor. Pode usar
-subagentes da sessão quando disponíveis. Sem subagentes, declare que os pareceres
-foram produzidos pela mesma sessão; não invente independência. O backend valida o
-conteúdo, mas a identidade declarada não autentica a plataforma ou o agente.
+The task expires after `min(300, 2 × timeframe_seconds)` seconds: 120 seconds for
+one-minute candles, 300 seconds for five- or fifteen-minute candles. It is not
+renewed by reuse. Parallel preparation and normal market updates return the same
+valid task instead of replacing an analysis already in progress.
 
-Envie em `POST /v1/commands` com Idempotency-Key ou em `tools/call` no MCP:
+Material account changes invalidate authority. New candles, marks, peak updates,
+and trailing-stop movement alone do not. Submission evaluates the frozen evidence
+and independently rechecks execution against the current account and market.
+
+## Evidence discipline
+
+Use only exact identifiers present in `evidence.evidence_registry`. Each registered
+value includes its source and availability time. Null/unavailable fields do not
+become observations. Reference examples such as `features.rsi` and `snapshot.price`
+are valid only if present in that particular task.
+
+Candidates and their economics are advisory. An empty or risk-rejected candidate
+list does not prevent external analysis. A different named strategy is permitted,
+but must be supported by observed evidence and pass all final controls. Do not
+invent a target, probability, news event, or data source to obtain approval.
+
+`entry_conditions` and `counterevidence_keys` contain registry references, not code
+or a predicate language. Natural-language thesis/invalidation is assessed by the
+consumer; the backend cannot prove its predictive validity.
+
+## Specialist reports
+
+The `reports` object has exactly `market`, `quality`, `flow`, and `challenger`.
+The manager is the separate `decision` object. Every report requires:
+
+| Field | Contract |
+|---|---|
+| `stance` | LONG, SHORT, HOLD, or CLOSE; SHORT is opposition, not enabled short execution |
+| `score` | Finite number in [0, 1]; descriptive, not a win probability |
+| `summary`, `invalidation` | Nonempty strings, at most 2,000 characters |
+| `evidence_keys` | Exact unique references; at most 20, each at most 200 characters; required for non-HOLD |
+| `concerns`, `missing_data` | String lists; at most 20 entries of at most 500 characters |
+| `risk_flags` | Same list limits; values from the allowed flags below |
+| `blocking` | Boolean veto flag |
+| `score_is_probability` | Must be `false` |
+
+Allowed risk flags: `data_quality`, `costs`, `liquidity`, `concentration`,
+`model_uncertainty`, `contradictory_evidence`, `unsupported_assumptions`.
+
+Coordinate the first three perspectives without disclosing peer answers when the
+session has independent agents. Give their reports to the challenger, then the
+review to the manager. If one coordinator performs all perspectives, disclose
+that fact; four JSON objects do not prove independent authorship. The backend
+checks structure and agreement, not identity or statistical independence.
+
+## Manager plan
+
+The `decision` object requires exactly:
+
+| Field | Contract |
+|---|---|
+| `action`, `market` | LONG/HOLD/CLOSE and `spot` |
+| `confidence` | Descriptive finite score in [0, 1] |
+| `stop_fraction` | 0.005–0.10 |
+| `take_fraction` | 0.005–0.30 |
+| `horizon_bars` | Integer 1–96 |
+| `thesis`, `strategy` | Strings up to 2,000 and 100 characters respectively; use meaningful values |
+| `evidence_keys` | Exact references; nonempty for LONG/CLOSE |
+| `invalidation` | Nonempty string up to 2,000 characters |
+| `entry_conditions` | Exact references; nonempty for LONG |
+| `exit_conditions` | List of allowed exit labels, at most 10 |
+| `counterevidence_keys` | Exact references, possibly empty |
+
+Reference lists follow the report reference bounds. Exit labels are
+`configured_stop`, `configured_take`, `time_exit`, `signal_reversal`, and `feed_failure`.
+A LONG needs `configured_stop`, at least one `features.*` and one `snapshot.*`
+evidence reference, at least two LONG supporters among market/quality/flow with
+scores at or above `min_confidence`, no blocking report, no contrary SHORT/CLOSE
+assessment, and deterministic risk approval. CLOSE requires an existing spot
+position; entry consensus/veto logic does not prohibit reducing that exposure.
+
+Never add `qty`, `notional`, `leverage`, or `mint` to the manager plan. The backend
+selects the configured instrument and computes size.
+
+## Submit
+
+Send exactly these arguments with a stable logical idempotency key:
 
 ```json
 {
-  "command": "submit_decision",
-  "args": {
-    "task_id": "copiar task.id",
-    "evidence_sha256": "copiar task.evidence_sha256",
-    "session_id": "identificador opaco da sessão, sem segredos",
-    "reports": {
-      "market": {},
-      "quality": {},
-      "flow": {},
-      "challenger": {}
-    },
-    "decision": {}
-  }
+  "task_id": "REPLACE_WITH_RETURNED_TASK_ID",
+  "evidence_sha256": "REPLACE_WITH_RETURNED_EVIDENCE_HASH",
+  "session_id": "truthful-consumer-session-identity",
+  "reports": {},
+  "decision": {}
 }
 ```
 
-Os objetos vazios acima são marcadores de documentação: preencha todos os campos
-dos schemas retornados. Valores extras são recusados; os agentes não escolhem o
-tamanho. Cite apenas chaves existentes em `evidence.evidence_registry`. Não trate
-score/confiança como probabilidade de ganho. Plano inválido é consumido como HOLD.
+The empty objects above are intentionally incomplete. Use returned schemas and
+actual assessments. A full non-trading payload skeleton is provided in
+[.agents/examples/decision-template.json](../.agents/examples/decision-template.json).
+It is not a trading recommendation or fabricated review.
 
-Em paper-live, a preparação atualiza o snapshot e a submissão coleta outro antes
-da transação. O plano continua vinculado às evidências originais. Se o preço
-ultrapassar `max_entry_gap_fraction`, a cotação estiver velha, uma nova barra tiver
-fechado, o estado tiver mudado ou o prazo tiver vencido, prepare novamente. Não
-altere timestamps para tornar dados antigos aparentemente novos. Replay conserva
-a decisão N para abertura N+1, com revalidação existente.
+For live-data LONG, the backend fetches current closed risk features and a fresh
+full Coinbase snapshot. The original quote is never rejuvenated. It checks entry
+drift, current account limits, and costs again. CLOSE needs a current book only;
+an adverse price move cannot be rejected solely by an entry deviation guard.
+HOLD performs no market I/O and applies no protective mark itself; the worker
+remains responsible for protection.
 
-Repetir a mesma submissão com a mesma chave devolve a resposta persistida sem
-nova coleta ou fill. Usar outra chave para a mesma tarefa consumida é recusado.
-Preparar novamente substitui a tarefa anterior. Halt, mudança de saldo, novo ciclo
-ou outro estado material invalidam o vínculo anterior. Nunca aguarde o raciocínio
-externo com uma transação de escrita aberta.
+In replay, approved actions schedule next-bar execution. The two input modes
+cannot be mixed in the same account.
 
-O worker sem consumidor continua coletando e gerenciando stops/breakers; não cria
-análises automaticamente. Automações precisam executar o ciclo de chamadas na
-própria plataforma. O modo `rules` só é ativado explicitamente para pesquisa.
+## Outcomes and recovery
 
-## Continuidade
+| Observation | Required consumer action |
+|---|---|
+| `submitted/opened` | Verify OPEN event and actual position/size |
+| `submitted/closed` | Verify CLOSE event and remaining exposure |
+| `submitted/abstained` | Report HOLD; inspect council gates/errors rather than claiming a trade |
+| `submitted/risk_rejected` | Read actual approval reasons; do not relax controls to force execution |
+| `submitted/scheduled` | Replay action is pending, not yet filled |
+| `reprepare_required` | Task was invalidated by drift; prepare, reason again, submit a new plan/key |
+| Transient 503 or client timeout | Retry identical command/payload/key while authority is valid; first inspect unknown outcomes |
+| Expired/materially invalid task | Prepare new evidence; never copy old reports under a new hash without review |
+| Already consumed task | Retrieve the committed response with its original key; inspect state/audit |
 
-Bancos persistidos preservam seu modo e saldo. Reabra bancos `rules` com
-`--agents rules`; não mude o modo editando o SQLite. A migração de um banco antigo
-com inferência embutida exige transferência auditada para uma sessão externa,
-conservando custos, perdas e limites consumidos; não há migração automática.
-Todas as operações continuam spot paper, exclusivamente Solana.
+Invalid contracts can be consumed as HOLD with an audit error; a 200 response is
+not proof of intended action. Successful execution events include provenance:
+declared session, protocol, prompt bundle, evidence hash, and source. Audit fields
+separate analytical time from current risk and execution observations.
 
-Após `warmed_up`, já é permitido chamar `prepare_decision`: o comando coleta o
-primeiro snapshot verificado antes de verificar a disponibilidade do contexto.
-`waiting_for_closed_bar` também não impede essa preparação. Com dados válidos, a preparação entrega uma tarefa mesmo sem candidato das regras
-internas. Candidatos são sugestões; a sessão pode propor uma estratégia própria
-com evidências, consenso e aprovação final de risco. Falhas de segurança continuam
-retornando `abstained`. Comandos de coleta compartilham um prazo total de 45 segundos; consumidores
-podem repetir falhas transitórias com a mesma chave, sem usar dados fabricados.
+## Operational validation
 
-A partir de `external-session-v2`, os pareceres são `market`, `quality`, `flow` e `challenger`. O papel `onchain` não é aceito. Use nova preparação para tarefas do protocolo anterior; saldos e histórico não são zerados. A única fonte de dados é a Coinbase; não existe RPC ou verificação blockchain.
-
-## Coordenação com worker ativo
-
-`prepare_decision` retorna a mesma tarefa enquanto ela permanecer válida, mesmo
-com novas chaves idempotentes e chamadas concorrentes. `reused=true` não renova o
-prazo nem o instante das observações. O worker continua atualizando candles, marks,
-stops e circuit breakers. Essas observações não substituem uma análise em curso.
-Mudanças de caixa, identidade/tamanho de posições, fills, permissões, modo,
-configuração ou bloqueio de risco invalidam a autorização anterior.
-
-A decisão é verificada contra o envelope original, com hash reproduzido. Uma nova
-barra não torna automaticamente inválida uma tese ainda dentro do prazo. Para
-LONG, o backend coleta indicadores fechados atuais e uma cotação Coinbase de no
-máximo 30 segundos, limita o desvio em relação ao preço analisado e revalida todo o
-risco contra a conta atual. `analysis_as_of`, `risk_bar_closed_at` e
-`execution_snapshot` distinguem esses instantes; não representam análises novas
-dos agentes. O consumidor continua responsável pela validade da tese.
-
-HOLD é registrado sem coletar preço nem aplicar marks. CLOSE usa somente um livro
-Coinbase atual, dispensando candles, volume e trades; a restrição de desvio de
-preço para entrada não bloqueia a redução de exposição. A cotação de saída não
-contém volume/fluxo coletados e não autoriza uma compra posterior. A preparação
-seguinte coleta o contexto completo quando necessário.
-
-`submit_decision` mantém `result=submitted` e informa `outcome` (`opened`, `closed`,
-`abstained`, `risk_rejected` ou `scheduled` no replay). Se o preço de entrada sair
-do contexto, retorna `result=reprepare_required`, `outcome=context_rejected`,
-invalida a tarefa e não gera fill. Nesse caso prepare novamente, reanalise e use
-nova chave para o novo plano. Não repita relatórios antigos com hashes novos.
-Falhas transitórias de coleta não consomem tarefa nem chave: repita o mesmo pedido
-com a mesma chave enquanto a tarefa estiver válida. Tarefas anteriores ao vínculo
-versão 2 exigem nova preparação; carteira e histórico permanecem intactos.
-
-Uma sessão pode validar deliberadamente OPEN/CLOSE pelo protocolo externo usando
-`strategy=execution_validation`. A finalidade deve ficar explícita nos relatórios;
-o plano continua passando por todos os controles. Entradas são marcadas como
-`validation_only`; esses roundtrips ficam separados das estatísticas de estratégia,
-mas custos, PnL, perdas diárias e drawdown continuam afetando a conta. Essa checagem
-não é evidência de alpha. `demo-live` sozinho continua sendo um coletor de tarefas,
-e não um consumidor inteligente que envia planos.
+`execution_check` is a separate explicit OPEN/CLOSE diagnostic. Alternatively an
+external submission may use `strategy=execution_validation` with its test purpose
+clearly declared. These checks still pass ordinary risk/cost controls. They are
+marked/separated from strategy statistics, while costs, PnL, cooldown, daily loss,
+and drawdown continue to affect the account. Do not substitute them for alpha
+trades without disclosing their diagnostic purpose.

@@ -9,11 +9,11 @@ from .external import task_is_current
 
 def run_demo(service,seconds=60,poll_seconds=5,output='results/demo-live',emit=None):
     if type(seconds) not in (int,float) or not 0<seconds<=3600:
-        raise ValueError('seconds precisa estar entre 0 e 3600')
+        raise ValueError('seconds must be greater than 0 and at most 3600')
     if type(poll_seconds) not in (int,float) or not 0<poll_seconds<=60:
-        raise ValueError('poll_seconds precisa estar entre 0 e 60')
+        raise ValueError('poll_seconds must be greater than 0 and at most 60')
     if service.council.mode!='external':
-        raise ValueError('Demo de sessão exige modo external')
+        raise ValueError('Session observation requires external mode')
     root=Path(output);root.mkdir(parents=True,exist_ok=True)
     initial=service.status()
     started=time.time();begin=time.monotonic();end=begin+seconds

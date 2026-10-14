@@ -9,18 +9,18 @@ class PaperBroker:
         return notional*(self.cfg.fee_bps+self.cfg.slippage_bps)/10000+self.cfg.fixed_cost_usdc
     def open(self,p,a,price,ts):
         if not a.approved or a.notional <= 0 or self.book.halted:
-            raise ValueError('Entrada sem aprovação válida')
+            raise ValueError('Entry lacks valid approval')
         mint = getattr(p, 'mint', SOL)
         if any(x.market == p.market and x.mint == mint for x in self.book.positions):
-            raise ValueError('Posição duplicada')
+            raise ValueError('Duplicate position')
         side = 1 if p.action == 'LONG' else -1
         if p.action not in {'LONG','SHORT'} or p.market == 'spot' and side == -1:
-            raise ValueError('Entrada inválida')
+            raise ValueError('Invalid entry')
         qty = a.notional/price
         cost = self.costs(a.notional)
         margin = a.notional if p.market == 'spot' else a.notional/a.leverage
         if margin+cost > self.book.cash+1e-8:
-            raise ValueError('Saldo fictício insuficiente')
+            raise ValueError('Insufficient paper cash')
         self.book.cash = max(0,self.book.cash-margin-cost)  # normalize sub-cent floating-point residue
         self.book.fees_paid += cost
         pid = hashlib.sha256(f'{ts}:{mint}:{p.market}:{side}'.encode()).hexdigest()[:16]

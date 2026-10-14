@@ -1,41 +1,81 @@
-# Alladin — notas de desenvolvimento
+# Agent instructions for Alladin
 
-Backend Python sem UI, só biblioteca padrão (Python 3.11+). Não adicionar dependências.
-Alladin usa exclusivamente a Coinbase para SOL-USDC spot paper; o rótulo Solana identifica o ativo, não uma conexão à blockchain. Não conecta carteiras,
-não guarda chaves, não assina nem envia transações. O ciclo paper-live consome candles,
-livro, trades e estatísticas públicas da Coinbase; falha de dado bloqueia
-novos ciclos e fills. Replay sintético serve apenas para testes do motor, nunca como
-prova de rentabilidade ou sessão de negociação.
+Alladin is a headless Python 3.11+ backend for Coinbase SOL-USDC spot **paper**
+research/execution. Read [README.md](README.md), then choose the appropriate path:
 
-## Verificação
+- **Consume the service:** [.agents/CONSUMER.md](.agents/CONSUMER.md).
+- **Change the repository:** [.agents/MAINTAINER.md](.agents/MAINTAINER.md).
+- **Operate or recover an account:** [docs/operations.md](docs/operations.md).
+- **Discover the full guide:** [.agents/README.md](.agents/README.md).
 
-- Testes: `python -m unittest discover -s tests` (raiz do repo)
-- Replay demo: `python -m alladin --db data/x.sqlite replay --feed data/demo.jsonl --output results/x --finalize`
-- Auditoria: `GET /v1/audit/verify` (HTTP) ou `store.verify_audit()`
+## Non-negotiable product boundaries
 
-## Invariantes
+- Use only the standard library at runtime; do not add inference SDKs, model
+  configuration, or AI-provider keys. Reasoning and optional subagents belong to
+  the consuming session, not this backend.
+- Live collection is exclusively Coinbase native SOL / `SOL-USDC`. `chain=solana`
+  is asset metadata. Do not add RPC, on-chain collection, wallet connections,
+  signers, transaction submission, real orders, shorting, or enabled perpetuals.
+- Keep `execution=paper` and `allowed_markets=["spot"]`. Legacy fields support
+  historical reads; they do not establish on-chain verification.
+- All maintained documentation, agent instructions, examples, and public runtime
+  text must be English. Preserve third-party originals and historical audit/data
+  artifacts exactly; do not rewrite old evidence to satisfy a language policy.
 
-- Coletas externas do `paper_tick` acontecem fora da transação SQLite; aplicação da decisão, resposta idempotente e evento persistem juntas em um comando transacional (`BEGIN IMMEDIATE`).
-- WAL com `synchronous=NORMAL`: atômico e consistente em crash de processo; perda do último commit só em queda de SO/energia — tolerada pelo modelo de repetição idempotente.
-- Decisão na barra N executa na abertura de N+1 revalidando o snapshot anterior. Nunca fabricar preço de um mint sem barra.
-- Nenhuma ordem externa é permitida neste projeto. Configuração precisa ser `chain=solana`, `execution=paper` e `allowed_markets=["spot"]`.
-- No fluxo paper-live, somente a Coinbase fornece os dados; cotação com mais de 30 segundos não autoriza entrada. Candle anterior à abertura de uma posição não pode disparar stop retroativo.
-- Gaps com posição fecham somente ao mark atual verificado e acionam halt persistente. Nunca preencher stop em preço histórico presumido.
-- Idempotência é consultada antes da coleta. Worker único por banco, polling contado após conclusão, saúde de processo distinta da prontidão do feed.
-- Mints não-âncora entram pelo funil `admit` → `watch`; replay/validate fazem isso automaticamente no primeiro snapshot de cada mint.
-- `status()` precifica cada posição pelo mark do próprio mint (`state['series'][mint]['last_price']`).
+## Execution and persistence invariants
 
-- `available_balance` usa todo o caixa após reservar custos: aprovar integralmente ou recusar. Não reduzir silenciosamente. Respeitar risco por entrada, perda diária restante, drawdown, exposição e liquidez.
-- Os originais em `finance_prompt_engineering/upstream` são referência não executável; preservar seus bytes e sua origem. Não carregar esses textos diretamente como instruções do runtime.
-- Prompts ativos em `alladin/finance_prompts` exigem atualização explícita dos hashes do catálogo. Relatórios externos citam apenas o registro de evidências, nunca probabilidades inventadas. Consenso não supera veto de risco.
-- Fixtures e propostas controladas não medem taxa de acerto de estratégia; avaliar PnL líquido, amostra, perdas e incerteza. Não prometer 900 operações vencedoras.
+- Market I/O stays outside SQLite write transactions. Mutation, event/seal, and
+  idempotent response commit atomically under `BEGIN IMMEDIATE`.
+- Check committed idempotency before collection; repeat the same logical payload
+  with the same key. Do not change keys to force a duplicate operation.
+- WAL with `synchronous=NORMAL` is atomic/process-crash consistent, not maximum
+  power-loss durability. Preserve backups, original account history, and seals.
+- Do not mix replay and live-data input in one database or silently change its
+  configuration fingerprint/mode. Never reset cash, losses, cooldown, or halt state.
+- Live entries require fresh Coinbase marks (30-second maximum) and closed current
+  risk data. Do not restamp old observations or invent retrospective gap/stop fills.
+- Replay decisions from N are eligible at N+1 after revalidation. Live execution
+  uses current observations, and pre-entry candles cannot retroactively stop a trade.
+- Gaps with exposure close only at a verified current mark and latch a halt. Flat
+  recovery may rewarm without inventing skipped-time trades.
+- Keep one cooperative worker per database and poll from completion. Stopping a
+  process does not prove exposure was closed.
+- `available_balance` approves the full affordable balance or refuses it; no hidden
+  downsizing. Enforce costs, exposure, participation, remaining daily loss, and drawdown.
 
-- A inteligência pertence à sessão consumidora. Não adicionar clientes de inferência, credenciais de IA ou seleção de modelos. Modo external é o padrão; subagentes são coordenados pela sessão externa.
+## External task invariants
 
-- Não implementar RPC, acesso blockchain ou verificação on-chain. Campos antigos de snapshot servem apenas à leitura de histórico; snapshots Coinbase novos não atestam cluster, contas ou autoridades.
+- Internal candidates are advisory. Do not gate external tasks/strategies solely
+  on an internally approved candidate. Evidence, consensus, and final risk remain mandatory.
+- Binding version 2 freezes the analysis and binds material account authority.
+  Market ticks do not replace valid tasks. Concurrent preparation coalesces without
+  refreshing timestamps or extending expiry.
+- Reproduce the original evidence hash at submission, then check current execution
+  risk. Never relabel old reports as analysis of new candles.
+- HOLD requires no market I/O and applies no mark. CLOSE requires a current book,
+  not unrelated candle/trade/volume collection or an entry-only deviation bound.
+- Excessive entry deviation retires the task with `reprepare_required`. Repeated
+  requests must remain nonexecuting/idempotent until a genuinely new plan is submitted.
+- Read exact schemas and registry references. Reject invented facts/probabilities,
+  unsupported sizes, invalid contracts, and attempts to override risk through consensus.
+- Do not claim independent agents unless that coordination actually happened.
 
-- Em modo external, candidatos quantitativos são sugestões. Não impedir tarefas ou propostas externas só porque não há candidato interno aprovado. Exigir evidências, consenso e aprovação final determinística do plano submetido.
+## Prompts and evidence
 
-- Tarefas externas com binding_version=2 congelam as evidências e vinculam somente autoridade material da conta. Ticks de mercado não substituem tarefas válidas. prepare_decision deve coalescer chamadas concorrentes; não renovar prazos/timestamps ao reaproveitar.
-- submit_decision analisa o envelope original e revalida risco com conta, indicadores fechados e cotação atuais. HOLD não faz I/O de mercado nem aplica marks. CLOSE exige livro atual, sem depender de volume/trades nem da restrição de desvio de preço para entradas.
-- Evidência original e execução atual têm timestamps distintos na auditoria. Nunca chamar relatórios antigos de análise de candles novos. Desvio excessivo invalida a tarefa com reprepare_required; retry com a mesma chave não deve executar nada.
+Preserve `finance_prompt_engineering/upstream` bytes and `UPSTREAM.json` provenance;
+never execute those texts as runtime instructions. Active prompts live in
+`alladin/finance_prompts`; changes require explicit catalog hash/version review.
+Fixtures and operational checks validate software, not profitable alpha or a
+near-perfect win rate. Report actual events, net results, uncertainty, and open exposure.
+
+## Verification
+
+```bash
+python3 -m unittest discover -s tests -q
+python3 -m compileall -q alladin
+git diff --check
+python3 -m alladin contract
+```
+
+Use isolated test accounts. Do not perform networked paper trades, alter a user's
+account, or publish private financial reports merely to verify documentation edits.

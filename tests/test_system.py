@@ -364,7 +364,7 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.service.status()['bars_processed'],1)
     def test_provider_throttle_never_leaks_as_429(self):
         with patch('alladin.server.execute',side_effect=DataError(
-                'Fonte de dados temporariamente indisponível',retry_after=5)):
+                'Data source temporarily unavailable',retry_after=5)):
             with self.assertRaises(urllib.error.HTTPError) as raised:
                 self.request('/v1/commands',{'command':'paper_tick','args':{}})
         self.assertEqual(raised.exception.code,503)

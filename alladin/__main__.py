@@ -20,7 +20,7 @@ def _interrupt(signum,frame):
     raise KeyboardInterrupt()
 
 def main():
-    parser = argparse.ArgumentParser(description='Solana-only research backend; paper execution and read-only market data.')
+    parser = argparse.ArgumentParser(description='Coinbase SOL-USDC paper backend; external-session reasoning and read-only market data.')
     parser.add_argument('--config',default='config.json')
     parser.add_argument('--db',default='data/session.sqlite')
     parser.add_argument('--agents',choices=['external','rules'],default='external')
@@ -48,7 +48,7 @@ def main():
     try:
         if args.command == 'generate-demo':
             if not 80 <= args.bars <= 10000:
-                raise ValueError('Demo: 80–10000 barras')
+                raise ValueError('Demo: 80-10000 bars')
             write_demo(args.output,args.bars)
             result = {'file':args.output,'data':'SYNTHETIC','bars':args.bars}
         elif args.command == 'contract':
@@ -65,7 +65,7 @@ def main():
                 return 0 if report['ready'] else 2
             if args.command == 'validate':
                 if args.agents != 'rules':
-                    raise ValueError('Validação por folds nesta versão aceita rules; sessões externas exigem agente conectado')
+                    raise ValueError('Chronological fold validation supports rules mode; external sessions require a connected consumer')
                 result=validate(cfg,args.feed,args.output,args.folds)
                 print(json.dumps(result,indent=2,ensure_ascii=False,allow_nan=False))
                 return 0

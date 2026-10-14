@@ -6,17 +6,17 @@ from statistics import NormalDist,mean
 
 def assess_trades(trades,source,agent_mode,target_entries=900,max_nonwins=2):
     if type(target_entries) is not int or target_entries<1 or type(max_nonwins) is not int or not 0<=max_nonwins<target_entries:
-        raise ValueError('Meta de amostra inválida')
+        raise ValueError('Invalid sample target')
     rows=list(trades)
     seen=set()
     for row in rows:
         pid=row.get('position_id')
         pnl=row.get('net_pnl')
         if not isinstance(pid,str) or not pid or pid in seen:
-            raise ValueError('Operação sem identificação única')
+            raise ValueError('Trade lacks a unique identity')
         seen.add(pid)
         if type(pnl) not in (int,float) or not math.isfinite(pnl):
-            raise ValueError('PnL líquido deve ser finito')
+            raise ValueError('Net PnL must be finite')
     pnl=[row['net_pnl'] for row in rows]
     n=len(pnl)
     wins=sum(value>0 for value in pnl)

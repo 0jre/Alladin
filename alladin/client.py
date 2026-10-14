@@ -8,12 +8,12 @@ class BackendClient:
     def __init__(self,url='http://127.0.0.1:8080',token=None):
         u = urlsplit(url)
         if u.scheme != 'https' and not (u.scheme == 'http' and u.hostname in {'127.0.0.1','localhost'}):
-            raise ValueError('HTTP somente loopback; remoto requer HTTPS')
+            raise ValueError('HTTP is allowed only on loopback; remote access requires HTTPS')
         if u.username or u.password or u.query or u.fragment:
-            raise ValueError('URL inválida')
+            raise ValueError('Invalid URL')
         self.url,self.token = url.rstrip('/'),token or os.environ.get('LAB_API_TOKEN')
         if not self.token:
-            raise ValueError('LAB_API_TOKEN ausente')
+            raise ValueError('LAB_API_TOKEN is missing')
     def _request(self,path,payload=None,key=None):
         headers = {'Authorization':'Bearer '+self.token,'Content-Type':'application/json'}
         if key:
@@ -30,5 +30,5 @@ class BackendClient:
     def command(self,name,args,key):
         response=self._request('/v1/commands',{'command':name,'args':args},key)
         if not isinstance(response,dict) or set(response)!={'result'} or not isinstance(response['result'],dict):
-            raise ValueError('Resposta de comando do backend inválida')
+            raise ValueError('Invalid backend command response')
         return response['result']
