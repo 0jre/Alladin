@@ -1,66 +1,630 @@
 [
   {
     "type": "function",
-    "name": "alladin_status",
-    "description": "Read the Solana spot paper portfolio, latest decision, open positions and circuit breakers from GET /v1/status.",
-    "parameters": {
-      "type": "object",
-      "properties": {},
-      "required": [],
-      "additionalProperties": false
-    },
-    "strict": true
-  },
-  {
-    "type": "function",
-    "name": "alladin_performance",
-    "description": "Read net closed-trade statistics, uncertainty, sample adequacy and the 900-entry research target from GET /v1/performance. It does not guarantee returns.",
-    "parameters": {
-      "type": "object",
-      "properties": {},
-      "required": [],
-      "additionalProperties": false
-    },
-    "strict": true
-  },
-  {
-    "type": "function",
-    "name": "alladin_command",
-    "description": "Call the authenticated Alladin backend. It only supports Coinbase-only SOL-USDC spot paper cycles and public market collection. It never connects a wallet, signs, or sends a transaction. Supply a unique idempotency key per logical request.",
+    "name": "list_products",
+    "description": "List all Coinbase catalog types with actual adapter support; paginate results.",
     "parameters": {
       "type": "object",
       "properties": {
-        "command": {
-          "type": "string",
-          "enum": [
-            "paper_tick",
-            "ingest",
-            "analyze",
-            "evaluate",
-            "halt",
-            "finalize",
-            "universe",
-            "admit",
-            "watch",
-            "unwatch",
-            "prepare_decision",
-            "submit_decision",
-            "execution_check"
-          ]
+        "quote_currency": {
+          "type": "string"
         },
-        "args": {
-          "type": "object",
-          "description": "Arguments exactly matching GET /v1/contract; use an empty object for commands with no arguments."
+        "limit": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "integer"
+        },
+        "refresh": {
+          "type": "boolean"
+        },
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "scan_opportunities",
+    "description": "Rank a bounded, diverse subset of active Coinbase spot tokens, including memecoins when listed. Advisory scenarios, never profit probabilities.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "integer"
+        },
+        "product_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "get_session_brief",
+    "description": "Read mode, balances, positions, limits, valuation age and halt state.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "get_portfolio",
+    "description": "Read shared cash authority and per-currency realized PnL; do not equate currencies.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "get_positions",
+    "description": "Read open spot positions and backend paper protection.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "get_risk_budget",
+    "description": "Read policy, current budget and valuation age; stale values never authorize entry.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "get_system_status",
+    "description": "Read halt, cooldown and valuation freshness.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "get_fills",
+    "description": "Read the most recent 100 simulated fills.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "get_trade_journal",
+    "description": "Read recent fills with linked theses.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "get_performance",
+    "description": "Read observed paper performance; no return guarantee.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "get_open_orders",
+    "description": "IOC simulator has no resting orders; unfilled remainder is cancelled.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "get_fee_tier",
+    "description": "Configured paper taker fee assumption; not a verified private account fee tier.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "reconcile",
+    "description": "Verify internal cash/inventory projections against balanced journal postings. No exchange account is connected.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "get_market_snapshot",
+    "description": "Read product metadata, closed-bar features and fresh L2 book.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string",
+          "description": "Canonical Coinbase product_id; never a blockchain mint."
         },
         "idempotency_key": {
           "type": "string"
         }
       },
       "required": [
-        "command",
-        "args",
-        "idempotency_key"
+        "product_id"
       ],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "get_orderbook",
+    "description": "Read validated public L2 book with source time.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string",
+          "description": "Canonical Coinbase product_id; never a blockchain mint."
+        },
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "product_id"
+      ],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "get_candles",
+    "description": "Read contiguous closed Coinbase candles; no synthetic gap filling.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string",
+          "description": "Canonical Coinbase product_id; never a blockchain mint."
+        },
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "product_id"
+      ],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "get_order",
+    "description": "Read an actual simulated order by ID.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "order_id": {
+          "type": "string"
+        },
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "order_id"
+      ],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "estimate_execution",
+    "description": "Estimate current buy VWAP, partial depth and configured fee from a quote budget. Does not approve a trade.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string",
+          "description": "Canonical Coinbase product_id; never a blockchain mint."
+        },
+        "quote_budget": {
+          "type": "string",
+          "description": "Finite decimal string; fractions are 0..1, not percentages."
+        },
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "product_id",
+        "quote_budget"
+      ],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "get_microstructure",
+    "description": "Read visible L2 imbalance and depth. Does not invent unavailable taker flow.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string",
+          "description": "Canonical Coinbase product_id; never a blockchain mint."
+        },
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "product_id"
+      ],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "log_thesis",
+    "description": "Record thesis and explicit invalidation before proposing a trade.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string",
+          "description": "Canonical Coinbase product_id; never a blockchain mint."
+        },
+        "agent_id": {
+          "type": "string"
+        },
+        "strategy": {
+          "type": "string"
+        },
+        "thesis": {
+          "type": "string"
+        },
+        "invalidation": {
+          "type": "string"
+        },
+        "horizon_seconds": {
+          "type": "integer"
+        },
+        "dry_run": {
+          "type": "boolean"
+        },
+        "purpose": {
+          "type": "string",
+          "enum": [
+            "strategy",
+            "execution_validation"
+          ]
+        },
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "product_id",
+        "agent_id",
+        "strategy",
+        "thesis",
+        "invalidation",
+        "horizon_seconds"
+      ],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "propose_trade",
+    "description": "Calculate server-side size, walk book, check shared risk and return an expiring proposal. No fill.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "thesis_id": {
+          "type": "string"
+        },
+        "stop_price": {
+          "type": "string",
+          "description": "Finite decimal string; fractions are 0..1, not percentages."
+        },
+        "take_profit_price": {
+          "type": "string",
+          "description": "Finite decimal string; fractions are 0..1, not percentages."
+        },
+        "risk_fraction": {
+          "type": "string",
+          "description": "Finite decimal string; fractions are 0..1, not percentages."
+        },
+        "order_type": {
+          "type": "string",
+          "enum": [
+            "MARKET_IOC",
+            "LIMIT_IOC"
+          ]
+        },
+        "limit_price": {
+          "type": "string",
+          "description": "Finite decimal string; fractions are 0..1, not percentages."
+        },
+        "partial_fill_policy": {
+          "type": "string",
+          "enum": [
+            "ACCEPT",
+            "REJECT"
+          ]
+        },
+        "trailing_fraction": {
+          "type": "string",
+          "description": "Finite decimal string; fractions are 0..1, not percentages."
+        },
+        "dry_run": {
+          "type": "boolean"
+        },
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "thesis_id",
+        "stop_price",
+        "take_profit_price",
+        "risk_fraction"
+      ],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "commit_trade",
+    "description": "Commit a valid proposal exactly once. Rechecks current data, account authority and risk; paper only.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "proposal_id": {
+          "type": "string"
+        },
+        "dry_run": {
+          "type": "boolean"
+        },
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "proposal_id"
+      ],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "close_position",
+    "description": "Reduce or close a spot position at observed bids. Allowed during halt. Partial depth can leave exposure.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string",
+          "description": "Canonical Coinbase product_id; never a blockchain mint."
+        },
+        "fraction": {
+          "type": "string",
+          "description": "Finite decimal string; fractions are 0..1, not percentages."
+        },
+        "dry_run": {
+          "type": "boolean"
+        },
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "product_id"
+      ],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "set_protection",
+    "description": "Tighten paper stop or trailing protection. Requires a running worker; no native exchange order.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string",
+          "description": "Canonical Coinbase product_id; never a blockchain mint."
+        },
+        "stop_price": {
+          "type": "string",
+          "description": "Finite decimal string; fractions are 0..1, not percentages."
+        },
+        "take_profit_price": {
+          "type": "string",
+          "description": "Finite decimal string; fractions are 0..1, not percentages."
+        },
+        "trailing_fraction": {
+          "type": "string",
+          "description": "Finite decimal string; fractions are 0..1, not percentages."
+        },
+        "dry_run": {
+          "type": "boolean"
+        },
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "product_id"
+      ],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "halt_trading",
+    "description": "Cancel uncommitted proposals and block entries. Closing remains available; does not flatten.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "dry_run": {
+          "type": "boolean"
+        },
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "cancel_order",
+    "description": "Cancel an uncommitted proposal; does not reverse a fill.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "proposal_id": {
+          "type": "string"
+        },
+        "dry_run": {
+          "type": "boolean"
+        },
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "proposal_id"
+      ],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "cancel_all",
+    "description": "Cancel all uncommitted proposals; does not close positions.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "dry_run": {
+          "type": "boolean"
+        },
+        "idempotency_key": {
+          "type": "string"
+        }
+      },
+      "required": [],
       "additionalProperties": false
     },
     "strict": false

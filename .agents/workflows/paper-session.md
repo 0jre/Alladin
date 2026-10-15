@@ -1,4 +1,6 @@
-# Paper session workflow
+# Legacy paper session workflow
+
+For the default multi-token backend use [portfolio.md](../../docs/portfolio.md).
 
 ## Before exposure
 

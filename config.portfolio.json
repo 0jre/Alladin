@@ -1,0 +1,16 @@
+{
+  "backend": "portfolio",
+  "execution": "paper",
+  "execution_engine": "nautilus",
+  "reporting_currency": "USDC",
+  "initial_balances": {"USDC": "250"},
+  "timeframe_seconds": 300,
+  "risk_per_trade": "0.005",
+  "max_open_risk": "0.02",
+  "max_position_fraction": "0.25",
+  "max_gross_fraction": "0.80",
+  "max_daily_loss": "0.02",
+  "max_drawdown": "0.06",
+  "taker_fee_bps": "20",
+  "max_scan_products": 8
+}

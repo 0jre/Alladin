@@ -9,6 +9,7 @@ from .transport import DataError
 
 class PromptLibrary:
     ROLES = {'market','quality','flow','challenger','manager'}
+    PORTFOLIO_PROMPTS = {'trading_session_start','pre_trade_checklist','post_trade_review','risk_officer_review'}
 
     def __init__(self,root=None):
         self.root = root if root is not None else files('alladin').joinpath('finance_prompts')
@@ -49,8 +50,19 @@ class PromptLibrary:
             names.append(self.catalog['regimes'][regime])
         return '\n\n'.join(self._text[name] for name in dict.fromkeys(names))
 
+    def render_portfolio(self,name):
+        if name not in self.PORTFOLIO_PROMPTS:
+            raise DataError('Unknown portfolio prompt')
+        focus={
+            'trading_session_start':'Establish account authority, current positions and worker health before scanning.',
+            'pre_trade_checklist':'Challenge the thesis and costs; inspect the expiring server proposal before commit.',
+            'post_trade_review':'Compare thesis, actual fills, net costs and remaining exposure. Preserve all losses.',
+            'risk_officer_review':'Review shared budget, currency units, correlated exposure and fail-closed controls. Risk vetoes stand.'}
+        return self._text[self.catalog['system']]+'\n\n'+self._text['portfolio.md']+'\n\nFocus: '+focus[name]
+
     def metadata(self,regime=None):
         return dict(version=self.catalog['version'],bundle_sha256=self.bundle_hash,
                     upstream_commit=self.catalog['upstream_commit'],
+                    portfolio_prompts={name:hashlib.sha256(self.render_portfolio(name).encode()).hexdigest() for name in sorted(self.PORTFOLIO_PROMPTS)},
                     roles={role:hashlib.sha256(self.render(role,regime).encode()).hexdigest()
                            for role in sorted(self.ROLES)})

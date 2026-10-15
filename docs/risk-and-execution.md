@@ -1,5 +1,8 @@
 # Risk and paper execution
 
+> Default backend: [multi-token portfolio](portfolio.md). The detailed legacy
+> procedures below apply to explicit legacy accounts unless stated otherwise.
+
 ## Authority
 
 The risk engine is deterministic and final. External agreement, a strong score,

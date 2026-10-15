@@ -4,9 +4,10 @@
 
 Alladin's product mandate is the Coinbase instrument universe, across tokens and
 product types. SOL-USDC is a legacy executor constraint, not the product mandate.
-This change implements broad discovery and product-specific public books. It does
-**not** implement broad execution. Never describe the current backend as trading
-all Coinbase products: that migration is incomplete.
+The default portfolio backend executes eligible Coinbase **spot** tokens,
+including listed memecoins, using a shared paper ledger. See
+[portfolio.md](portfolio.md). Non-spot execution remains unimplemented; never
+describe this as execution support for every financial product in the catalog.
 
 | Layer | Implemented behavior |
 |---|---|
@@ -16,7 +17,7 @@ all Coinbase products: that migration is incomplete.
 | Metadata | Preserve increments, limits, currencies, venue, session, futures, equity and other returned details |
 | Order book | Request by product ID, validate identity and levels, preserve source timestamp; research only |
 | Size helper | Decimal arithmetic; round down to actual lot multiples; enforce base limits |
-| Execution | Existing SOL-USDC spot paper executor only; other adapters explicitly unavailable |
+| Execution | Shared multi-token spot paper executor; legacy SOL-USDC path retained for old accounts; non-spot adapters unavailable |
 | Eligibility | Unknown: public listing does not establish regional/account permission |
 
 ## Commands
@@ -35,9 +36,12 @@ Use the authenticated `POST /v1/commands` route or the matching MCP tools:
 {"command":"instrument_book","args":{"product_id":"ETH-EUR"}}
 ```
 
-These commands are read-only and do not consume or modify an account's cash,
+The portfolio MCP contract uses `list_products`, `get_market_snapshot` and
+`get_orderbook`; HTTP/local commands also retain the discovery aliases above.
+These discovery commands are read-only and do not consume or modify an account's cash,
 positions, risk history, tasks or configuration fingerprint. A fresh catalog is
-cached for 60 seconds. `{"refresh":true}` requests a complete refresh. Failures
+cached for five minutes in the portfolio backend (60 seconds in legacy discovery).
+`{"refresh":true}` requests a complete refresh. Failures
 raise an error; incomplete refreshes never replace the complete cache. Read-only
 requests are not persisted as idempotent ledger mutations, so repeating one can
 return newer observations.
@@ -48,13 +52,12 @@ Do not strip disabled instruments or silently classify unknown types as spot.
 Catalog snapshots are observations, not a transactionally frozen exchange-wide
 view; pagination can overlap as the upstream listing changes.
 
-## Execution migration requirements
+## Execution accounting boundaries
 
-Multi-product execution must use a single shared cash/risk authority rather than
-duplicating the same balance in a ledger per symbol. It must preserve existing
-accounts and audit chains through an explicit migration. A canonical instrument
-model must replace mint-based execution identity throughout proposals, evidence,
-task bindings, marks, positions and aggregate exposure.
+The portfolio executor uses one shared cash/risk authority rather than duplicating
+balances per symbol. Its flat-account migration preserves the legacy snapshot and
+audit chain. Canonical IDs identify spot theses, proposals, observations, marks
+and positions independently of legacy mints.
 
 Spot requires separate currency balances, actual bid/ask liquidity, increments,
 fees and explicit FX conversion. USD, USDC, EUR and BTC must not be treated as the
@@ -65,9 +68,10 @@ a product group is not an executable contract. Equities require canonical IDs,
 session calendars, fractional permissions, side restrictions and corporate action
 handling. Venue-specific gateways must be implemented where applicable.
 
-Until those paths and their tests exist, discovery must return an explicit
-`execution_adapter_not_implemented` block. Generic book responses always return
-`execution_authorized=false`; receiving a book cannot bypass execution checks.
+The spot path implements currencies, lots, costs and shared risk. Derivative,
+option and equity accounting remain unavailable and receive explicit adapter
+blocks. Legacy discovery still labels its own SOL-USDC-only execution scope.
+Generic research books never authorize execution; proposal/commit risk is required.
 
 ## Primary reference
 

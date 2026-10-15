@@ -1,5 +1,8 @@
 # Market data and temporal contract
 
+> Default backend: [multi-token portfolio](portfolio.md). The detailed legacy
+> procedures below apply to explicit legacy accounts unless stated otherwise.
+
 ## Live source
 
 The only implemented live source is Coinbase Advanced Trade public market data

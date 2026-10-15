@@ -1,5 +1,8 @@
 # Operations and recovery
 
+> Default backend: [multi-token portfolio](portfolio.md). The detailed legacy
+> procedures below apply to explicit legacy accounts unless stated otherwise.
+
 ## Supported operating model
 
 Use persistent local storage and one supervised worker per database. The shipped

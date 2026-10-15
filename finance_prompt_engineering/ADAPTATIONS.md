@@ -1,7 +1,7 @@
 # Adaptation map
 
 The preserved chapters are reference material. Alladin's reviewed prompts are
-separately authored for Coinbase SOL-USDC spot paper evidence and external sessions.
+separately authored for Coinbase multi-token spot paper evidence and external sessions.
 
 | Original chapter | Alladin treatment |
 |---|---|

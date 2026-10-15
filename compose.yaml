@@ -1,0 +1,21 @@
+services:
+  alladin:
+    build: .
+    init: true
+    command: ["python", "-m", "alladin", "--config", "/app/config.portfolio.json", "--db", "/app/data/portfolio.sqlite", "serve", "--paper-worker", "--poll-seconds", "30"]
+    network_mode: host
+    environment:
+      LAB_API_TOKEN: ${LAB_API_TOKEN:?Set LAB_API_TOKEN to at least 32 characters}
+    volumes:
+      - alladin-data:/app/data
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  alladin-data:

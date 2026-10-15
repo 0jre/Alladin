@@ -4,6 +4,12 @@ __pycache__/
 *.sqlite*
 results/
 .venv/
+.venv-*/
+vendor/nautilus_trader/
+vendor/nautilus_trader-*.tar.gz*
+vendor/nautilus_trader.manifest.json
+vendor/nautilus_trader.provenance.json
+vendor/pinned-extract/
 *.worker.lock
 build/
 *.egg-info/

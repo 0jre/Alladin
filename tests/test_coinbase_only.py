@@ -46,7 +46,7 @@ class CoinbaseOnlyTests(unittest.TestCase):
 
     def test_prompt_role_and_bundle_are_versioned_without_onchain_claims(self):
         prompts=PromptLibrary()
-        self.assertEqual(prompts.metadata()['version'],'2.1.0')
+        self.assertEqual(prompts.metadata()['version'],'2.2.0')
         self.assertIn('quality',prompts.ROLES);self.assertNotIn('onchain',prompts.ROLES)
         self.assertIn('No blockchain RPC',prompts.render('quality'))
         with self.assertRaises(DataError):prompts.render('onchain')

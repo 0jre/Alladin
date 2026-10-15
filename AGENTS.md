@@ -1,8 +1,9 @@
 # Agent instructions for Alladin
 
 Alladin is a headless Python 3.11+ backend targeting the Coinbase product universe.
-Discovery covers the full public catalog; the legacy executor remains SOL-USDC
-spot **paper** until product-specific adapters are implemented. Read
+The default portfolio backend executes eligible Coinbase spot tokens, including
+listed memecoins, against a shared **paper** ledger. Legacy accounts retain the
+old SOL-USDC executor until explicitly migrated. Read [portfolio guide](docs/portfolio.md),
 [Coinbase universe](docs/coinbase-universe.md) and [README.md](README.md), then choose the appropriate path:
 
 - **Consume the service:** [.agents/CONSUMER.md](.agents/CONSUMER.md).
@@ -12,9 +13,11 @@ spot **paper** until product-specific adapters are implemented. Read
 
 ## Non-negotiable product boundaries
 
-- Use only the standard library at runtime; do not add inference SDKs, model
-  configuration, or AI-provider keys. Reasoning and optional subagents belong to
-  the consuming session, not this backend.
+- The portfolio runtime uses pinned NautilusTrader 1.231.0 as its native paper
+  execution engine. Core controls remain Python; do not add inference SDKs,
+  model configuration or AI-provider keys. Reasoning and optional subagents
+  belong to the consuming session, not this backend. Python 3.12+ is required
+  for the shipped engine profile.
 - Product scope is the Coinbase catalog, across tokens and instrument types;
   do not introduce a SOL-only allowlist in generic discovery or new adapters.
   Identify instruments by canonical `product_id`, not a blockchain mint.
@@ -22,6 +25,10 @@ spot **paper** until product-specific adapters are implemented. Read
   quantities, sessions, contract size, margin, settlement and funding where
   applicable before advertising execution support. Never route an unknown type
   into spot accounting. Legacy account constraints remain valid for those accounts.
+- The portfolio backend uses `SpotService`, `SpotPolicy` and `SpotMarket`; the
+  default CLI config is `config.portfolio.json`. Preserve shared cash, decimal
+  increments, expiring propose/commit authority, balanced postings and internal
+  reconciliation. Never use a separate balance per token.
 - Do not add RPC, wallet connections, signers or real order submission. Public
   visibility does not prove account or regional trading eligibility.
 - All maintained documentation, agent instructions, examples, and public runtime
@@ -48,8 +55,14 @@ spot **paper** until product-specific adapters are implemented. Read
   process does not prove exposure was closed.
 - `available_balance` approves the full affordable balance or refuses it; no hidden
   downsizing. Enforce costs, exposure, participation, remaining daily loss, and drawdown.
+  This is the legacy policy. Portfolio risk sizing explicitly takes the minimum
+  shared budget and reserves 2% sizing headroom; it never increases committed size.
 
 ## External task invariants
+
+These task-envelope rules describe the legacy external-session protocol. The
+portfolio protocol uses thesis → expiring proposal → commit; preserve its account
+revision, quote drift, evidence record and proposal-level duplicate protection.
 
 - Internal candidates are advisory. Do not gate external tasks/strategies solely
   on an internally approved candidate. Evidence, consensus, and final risk remain mandatory.

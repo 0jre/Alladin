@@ -1,5 +1,8 @@
 # Architecture
 
+> Default backend: [multi-token portfolio](portfolio.md). The detailed legacy
+> procedures below apply to explicit legacy accounts unless stated otherwise.
+
 ## Control and data paths
 
 Alladin separates external reasoning from deterministic account mutation. HTTP,

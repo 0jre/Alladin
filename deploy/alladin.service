@@ -1,5 +1,5 @@
 [Unit]
-Description=Alladin Solana paper backend
+Description=Alladin Coinbase multi-token paper backend
 Wants=network-online.target
 After=network-online.target
 
@@ -12,7 +12,7 @@ Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 EnvironmentFile=/etc/alladin/alladin.env
 StateDirectory=alladin
-ExecStart=/usr/bin/python3 -m alladin --config /opt/alladin/config.json --db /var/lib/alladin/paper-250.sqlite serve --paper-worker --poll-seconds 30
+ExecStart=/usr/bin/python3 -m alladin --config /opt/alladin/config.portfolio.json --db /var/lib/alladin/portfolio.sqlite serve --paper-worker --poll-seconds 30
 Restart=on-failure
 RestartSec=10
 TimeoutStopSec=60

@@ -1,5 +1,8 @@
 # API reference
 
+> Default backend: [multi-token portfolio](portfolio.md). The detailed legacy
+> procedures below apply to explicit legacy accounts unless stated otherwise.
+
 Read-only `catalog`, `instrument` and `instrument_book` commands share the command
 transport described below. They cover the public Coinbase universe independently
 of legacy mint-based execution. See [schemas and capability limits](coinbase-universe.md).

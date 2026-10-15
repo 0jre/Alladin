@@ -1,5 +1,5 @@
 {
-  "version": "2.1.0",
+  "version": "2.2.0",
   "system": "system.md",
   "roles": {
     "market": {
@@ -69,7 +69,7 @@
   },
   "upstream_commit": "277112633031228587af3525557b088659a4df4f",
   "files": {
-    "system.md": "1366e1d24ef9c8fdffa65ccd84a76703a0683482248a1c8adece17684494b46c",
+    "system.md": "0c96c28f99b651680fbeaddd5db663842c3dfdf013abce41b4d78d8b87d73431",
     "roles/market.md": "8e4072e4197a7cd3b89c2c5863acc1b52ddbea2b87b62d4d026b81c610848299",
     "roles/flow.md": "b39877a51fd57b0dcebc2d83a62b3a75b187665666ea2308260b9d91277db47e",
     "roles/challenger.md": "a40b236b1ed4895764f4c206e76d08686c7625d14651679ae702b2a2f1f2ab30",
@@ -80,6 +80,7 @@
     "skills/regime_trend.md": "c61c1f449b5bd3e062e7105a1d152f9ee862209259ed12228641dfb95752098c",
     "skills/regime_range.md": "f6303113b8e5f25ddb1474ee552ca59784ead556cd43a9967976deac88cc4f40",
     "skills/regime_shock.md": "b3d6c8428041d466a6bcc9516c22e14e4fe20a5c7287ac51143ca459ae97161e",
-    "roles/quality.md": "5aa2b860d4da1cafac9b6c00b6cccaa9db12d1399b0ea9e710271c1a5556dc30"
+    "roles/quality.md": "2fed4cbd1376585dd3814f3a5706e6a4b7629d4bc5e776acdece5c4e83b7e89e",
+    "portfolio.md": "1bcbef853e909ebc49ac34745313e01843d6bb120bbb41dcde6eea525e5bf36d"
   }
 }

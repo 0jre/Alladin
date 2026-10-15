@@ -76,10 +76,14 @@ def capabilities(instrument):
 class CoinbaseInstruments:
     BASE = 'https://api.coinbase.com/api/v3/brokerage/market'
 
-    def __init__(self, http=None, ttl=60, clock=time.time):
+    def __init__(self, http=None, ttl=60, clock=time.time, page_size=100, collection_seconds=45):
         self.http = http or HTTP(timeout=HTTP_TOTAL_SECONDS, retries=2)
         self.clock = clock
         self.ttl = positive(ttl, 'catalog_ttl_seconds')
+        if type(page_size) is not int or not 1 <= page_size <= 500:
+            raise ValueError('Catalog page size must be between 1 and 500')
+        self.page_size=page_size
+        self.collection_seconds=float(positive(collection_seconds,'collection_seconds'))
         self._cache = None
         self._lock = threading.Lock()
 
@@ -117,9 +121,9 @@ class CoinbaseInstruments:
                 return deepcopy(self._cache)
             # Explicit get_all_products: omission silently returns SPOT only.
             # Never replace a complete cache with partial pages after a failure.
-            with deadline(45):
+            with deadline(self.collection_seconds):
                 products, seen_cursors = {}, set()
-                params = {'get_all_products': 'true', 'limit': 100}
+                params = {'get_all_products': 'true', 'limit': self.page_size}
                 for page_number in range(200):
                     data = self._get('products', params)
                     rows = data.get('products')

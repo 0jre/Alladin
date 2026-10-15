@@ -11,7 +11,7 @@ snapshot contained no license declaration; preservation does not imply a license
 The backend never loads upstream chapter text directly as runtime instruction.
 The reviewed Alladin-specific library is `alladin/finance_prompts`, packaged with
 the Python service and checked by `prompts.py` for allowed paths, size, version,
-and exact catalog hashes. Current bundle: **2.1.0**. The
+and exact catalog hashes. Current bundle: **2.2.0**. The
 [adaptation map](ADAPTATIONS.md) describes the conceptual scope.
 
 ## Active roles

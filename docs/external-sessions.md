@@ -1,5 +1,8 @@
 # External session protocol
 
+> Default backend: [multi-token portfolio](portfolio.md). The detailed legacy
+> procedures below apply to explicit legacy accounts unless stated otherwise.
+
 ## Identity and authority
 
 The protocol is `external-session-v2`, task binding version `2`. Alladin prepares

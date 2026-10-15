@@ -1,0 +1,11 @@
+.git
+.venv*
+results
+data
+upload
+vendor
+__pycache__
+*.sqlite*
+*.worker.lock
+*.egg-info
+build

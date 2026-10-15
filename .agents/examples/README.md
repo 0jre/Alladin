@@ -1,5 +1,10 @@
 # Consumer examples
 
+- [portfolio_session.py](portfolio_session.py): default multi-token account,
+  internal reconciliation and advisory scan. It never invents a trading decision.
+
+The examples below use the explicit legacy task protocol:
+
 - [http_session.py](http_session.py): inspect status, prepare a task, or submit a
   session-authored payload through the existing HTTP client. It supplies no model,
   strategy, signal, agent reports, or automatic retry/trading loop.

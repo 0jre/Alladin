@@ -1,10 +1,13 @@
 # Product specification
 
+> Default backend: [multi-token portfolio](portfolio.md). The detailed legacy
+> procedures below apply to explicit legacy accounts unless stated otherwise.
+
 ## Purpose and supported scope
 
-The product mandate covers the Coinbase product universe. Public catalog and
-instrument-book discovery are now generic; execution remains the legacy SOL-USDC
-spot path. See [actual capabilities and migration requirements](coinbase-universe.md).
+The product mandate covers the Coinbase product universe. The default portfolio backend executes eligible Coinbase spot tokens,
+including listed memecoins, with a shared ledger. Legacy accounts retain SOL-USDC
+until migrated. See [actual capabilities and migration requirements](coinbase-universe.md).
 The table below describes that legacy execution path, not the overall mandate.
 
 Alladin makes observation, portfolio control, and paper accounting available to an

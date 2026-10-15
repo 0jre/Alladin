@@ -4,10 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alladin"
-version = "0.6.0"
+version = "0.7.0"
 requires-python = ">=3.11"
 description = "Headless Coinbase instrument research and paper trading backend."
 dependencies = []
+
+[project.optional-dependencies]
+engine = ["nautilus_trader==1.231.0"]
 
 [project.scripts]
 alladin = "alladin.__main__:main"

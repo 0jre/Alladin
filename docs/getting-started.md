@@ -1,5 +1,8 @@
 # Getting started
 
+> Default backend: [multi-token portfolio](portfolio.md). The detailed legacy
+> procedures below apply to explicit legacy accounts unless stated otherwise.
+
 ## Requirements
 
 - Python 3.11+; no third-party runtime dependencies.

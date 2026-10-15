@@ -13,7 +13,8 @@ class PaperRunner:
     def __init__(self,service,poll_seconds=30,stop_event=None,emit=None):
         if type(poll_seconds) is not int or not 10 <= poll_seconds <= 300:
             raise ValueError('poll-seconds must be between 10 and 300')
-        if hasattr(service,'cfg') and service.cfg.timeframe_seconds not in {60,300,900}:
+        allowed={60,300,900,3600} if getattr(service,'VERSION',None)=='coinbase-portfolio-v1' else {60,300,900}
+        if hasattr(service,'cfg') and service.cfg.timeframe_seconds not in allowed:
             raise ValueError('Paper worker requires 1-, 5- or 15-minute candles')
         if hasattr(service,'cfg'):
             service.status()  # incompatible/corrupt sessions must fail startup, not retry forever

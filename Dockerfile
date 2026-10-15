@@ -1,8 +1,11 @@
-FROM python:3.12-slim
+FROM python:3.12-slim-bookworm
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 COPY alladin /app/alladin
 COPY config.json /app/config.json
+COPY config.portfolio.json /app/config.portfolio.json
+COPY pyproject.toml README.md /app/
+RUN pip install --no-cache-dir '.[engine]'
 RUN useradd --uid 10001 --create-home lab && mkdir /app/data && chown lab:lab /app/data
 USER lab
 VOLUME ["/app/data"]

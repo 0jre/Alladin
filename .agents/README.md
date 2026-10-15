@@ -1,5 +1,7 @@
 # Alladin agent entry point
 
+Start with the [multi-token portfolio protocol](../docs/portfolio.md). Legacy task envelopes remain supported only for explicit legacy accounts.
+
 This directory teaches an external agent how to **use** Alladin and a coding agent
 how to **maintain** it. It is documentation, not an installed skill, model plugin,
 automatic worker, or permission to trade outside the user's mandate.

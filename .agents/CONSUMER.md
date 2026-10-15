@@ -1,5 +1,24 @@
 # Instructions for an Alladin consumer
 
+## Default portfolio protocol
+
+Read [the portfolio guide](../docs/portfolio.md) and the live contract first. The
+default backend now supports multiple eligible Coinbase spot tokens, including
+memecoins, through one shared cash/risk authority. Use `get_session_brief`,
+`scan_opportunities`, `log_thesis`, `propose_trade`, `commit_trade` and current-book
+`close_position`. Keep one `paper_tick` worker running while exposed. Inspect
+unfunded quotes, actual capability blocks, effective candle timeframe, configured
+fee assumptions, expiry and remaining quantity. Do not force a scan candidate to
+trade when costs or evidence fail. Scores are not profit probabilities.
+
+Retry identical mutations with the same key. A committed proposal cannot create
+another fill under a different key. Read `reconcile`, actual fills, net PnL and
+audit before reporting success. Resources and reviewed prompts are discoverable
+through MCP. Existing-account migration must preserve cash and loss history.
+
+The remainder of this file documents the explicit **legacy** protocol; it does
+not restrict portfolio sessions to SOL-USDC or authorize resetting an old account.
+
 ## Establish authority before commands
 
 Use `catalog`, `instrument` and `instrument_book` for the full public Coinbase

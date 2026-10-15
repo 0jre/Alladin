@@ -54,6 +54,10 @@ CONTRACT = {
              'ingest automatically invokes the council; synthetic replay is not a live-market performance test.']}
 
 def build_server(service,port=8080,token=None,runner=None):
+    contract = CONTRACT
+    if getattr(service,'VERSION',None)=='coinbase-portfolio-v1':
+        from .spot_tools import contract as portfolio_contract
+        contract = portfolio_contract()
     token = token or os.environ.get('LAB_API_TOKEN')
     if not token or len(token) < 32:
         raise ValueError('LAB_API_TOKEN is required and must contain at least 32 characters')
@@ -91,6 +95,8 @@ def build_server(service,port=8080,token=None,runner=None):
                         and time.time()-state['last_timestamp']-service.cfg.timeframe_seconds
                             <= max(120,service.cfg.timeframe_seconds*2)
                         and not (state.get('last_decision') or {}).get('council',{}).get('error'))
+                    if getattr(service,'VERSION',None)=='coinbase-portfolio-v1':
+                        ready=ready and not state.get('valuation_stale',True)
                     return self.send_json(200 if ready else 503,{'ready':ready})
                 except Exception:
                     return self.send_json(503,{'ready':False})
@@ -108,12 +114,13 @@ def build_server(service,port=8080,token=None,runner=None):
                 elif parsed.path.startswith('/v1/prompts/'):
                     role=parsed.path.rsplit('/',1)[-1]
                     regime=parse_qs(parsed.query).get('regime',[None])[0]
-                    if role not in PromptLibrary.ROLES:
+                    portfolio_prompt=getattr(service,'VERSION',None)=='coinbase-portfolio-v1' and role in PromptLibrary.PORTFOLIO_PROMPTS
+                    if role not in PromptLibrary.ROLES and not portfolio_prompt:
                         return self.send_json(404,{'error':'unknown_prompt_role'})
                     if regime not in (None,'trend','range','shock'):
                         raise ValueError('Unknown regime')
                     library=PromptLibrary()
-                    result=dict(role=role,instructions=library.render(role,regime),metadata=library.metadata(regime))
+                    result=dict(role=role,instructions=library.render_portfolio(role) if portfolio_prompt else library.render(role,regime),metadata=library.metadata(regime))
                 elif parsed.path == '/v1/health':
                     state = service.status()
                     result = dict(worker=runner.health() if runner else {'running':False,'ready':False},
@@ -121,7 +128,7 @@ def build_server(service,port=8080,token=None,runner=None):
                                   last_bar=state['last_timestamp'],
                                   decision_error=(state.get('last_decision') or {}).get('council',{}).get('error'))
                 elif parsed.path == '/v1/contract':
-                    result = CONTRACT
+                    result = contract
                 elif parsed.path == '/v1/audit/verify':
                     result = service.store.verify_audit()
                 elif parsed.path == '/v1/audit':
@@ -153,7 +160,7 @@ def build_server(service,port=8080,token=None,runner=None):
                 name,args = d['command'],d['args']
                 if not isinstance(name,str):
                     raise ValueError('Invalid command')
-                if name != 'halt':
+                if name not in {'halt','halt_trading'}:
                     locked = mutation_lock.acquire(blocking=False)
                     if not locked:
                         return self.send_json(503,{'error':'command_busy','retry':'same_idempotency_key'})

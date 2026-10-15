@@ -23,7 +23,13 @@ def _tool(name, description, properties, required=()):
     return {'name': name, 'description': description, 'inputSchema': schema}
 
 
-def tools():
+def tools(service=None):
+    if getattr(service,'VERSION',None)=='coinbase-portfolio-v1':
+        from .spot_tools import specifications
+        return [_tool(name,description,{**required,**optional},tuple(required))
+                for name,description,required,optional in specifications()] + [
+                    _tool('alladin_status','Read portfolio paper account.',{}),
+                    _tool('alladin_contract','Read actual portfolio capabilities.',{})]
     optional = {}
     return [
         _tool('catalog', 'Discover all public Coinbase product types without a SOL allowlist. Visibility is not execution support or account eligibility.', {'refresh':{'type':'boolean'}}),
@@ -77,27 +83,34 @@ def handle(service, message):
     if not isinstance(message, dict) or message.get('jsonrpc') != '2.0' or 'method' not in message:
         raise ValueError('Invalid JSON-RPC')
     method = message['method']
+    portfolio=getattr(service,'VERSION',None)=='coinbase-portfolio-v1'
     params = message.get('params') or {}
     if method == 'initialize':
         version = params.get('protocolVersion')
         return {
             'protocolVersion': version if version in ACCEPTED else PROTOCOL,
-            'capabilities': {'tools': {'listChanged': False}, 'prompts': {'listChanged': False}},
+            'capabilities': {'tools': {'listChanged': False}, 'prompts': {'listChanged': False},
+                             **({'resources':{'subscribe':False,'listChanged':False}} if portfolio else {})},
             'serverInfo': {'name': 'alladin', 'version': __version__},
-            'instructions': 'Alladin discovers the full public Coinbase product catalog through catalog, instrument and instrument_book. Check alladin_capabilities before proposing execution. The legacy paper executor remains SOL-USDC spot; other execution adapters are not implemented. All fills are simulated. External sessions supply reasoning; never connect a wallet or sign transactions.',
+            'instructions': ('Coinbase multi-token spot paper backend. Read get_session_brief, scan_opportunities, log_thesis, propose_trade and commit_trade. Shared cash/risk across products. All fills are simulated from visible L2; no native exchange stops. Keep paper_tick worker running while exposed. External sessions supply reasoning.' if portfolio else 'Legacy SOL-USDC spot paper executor with broad catalog discovery. Other token execution requires the portfolio backend. All fills are simulated. External sessions supply reasoning; never connect a wallet or sign transactions.'),
         }
     if method == 'ping':
         return {}
     if method == 'tools/list':
-        return {'tools': tools()}
+        return {'tools': tools(service)}
     if method == 'tools/call':
         return _call(service, params)
     if method == 'prompts/list':
+        if portfolio:
+            return {'prompts':[{'name':name,'description':'Reviewed portfolio paper protocol: '+name} for name in sorted(PromptLibrary.PORTFOLIO_PROMPTS)]}
         return {'prompts':[{'name':'alladin_'+role,'description':'Reviewed Solana spot paper finance role: '+role,
                  'arguments':[{'name':'regime','description':'Optional trend, range or shock context','required':False}]}
                  for role in sorted(PromptLibrary.ROLES)]}
     if method == 'prompts/get':
         name=params.get('name','')
+        if portfolio:
+            return {'description':'Reviewed multi-token paper protocol',
+                    'messages':[{'role':'user','content':{'type':'text','text':PromptLibrary().render_portfolio(name)}}]}
         role=name.removeprefix('alladin_') if isinstance(name,str) else ''
         if name!='alladin_'+role or role not in PromptLibrary.ROLES:
             raise ValueError('Prompt not found')
@@ -107,13 +120,25 @@ def handle(service, message):
             raise ValueError('Unknown regime')
         return {'description':'Alladin Finance Prompt '+role,
                 'messages':[{'role':'user','content':{'type':'text','text':PromptLibrary().render(role,regime)}}]}
+    if portfolio and method=='resources/list':
+        return {'resources':[{'uri':uri,'name':name,'mimeType':'application/json'} for uri,name in
+            [('portfolio://current','Current portfolio'),('policy://limits','Account policy'),
+             ('journal://trades/recent','Recent fills and theses'),('runbook://incident','Incident response')]]}
+    if portfolio and method=='resources/read':
+        uri=params.get('uri')
+        if uri=='portfolio://current':value=service.status()
+        elif uri=='policy://limits':value=service.status()['policy']
+        elif uri=='journal://trades/recent':value=service.command('get_trade_journal',{},'resource-read')
+        elif uri=='runbook://incident':value=dict(execution='paper',steps=['halt_trading','inspect positions and stale data','restore Coinbase data','close_position to reduce risk','verify flat status and audit'],resume='No agent resume command. Operator review and an explicit policy procedure are required.')
+        else:raise ValueError('Unknown resource')
+        return {'contents':[{'uri':uri,'mimeType':'application/json','text':json.dumps(value,allow_nan=False)}]}
     raise ValueError('Unknown MCP method')
 
 
 def _call(service, params):
     name = params.get('name')
     arguments = params.get('arguments') or {}
-    known = {tool['name'] for tool in tools()}
+    known = {tool['name'] for tool in tools(service)}
     if name not in known or not isinstance(arguments, dict):
         return _error('Unknown tool')
     try:
@@ -129,7 +154,11 @@ def _call(service, params):
                 raise ValueError('limit: 1–500')
             result = {'events': service.store.audit(limit)}
         elif name == 'alladin_contract':
-            result = CONTRACT
+            if getattr(service,'VERSION',None)=='coinbase-portfolio-v1':
+                from .spot_tools import contract
+                result = contract()
+            else:
+                result = CONTRACT
         else:
             args = dict(arguments)
             key = args.pop('idempotency_key', None) or 'mcp-' + uuid.uuid4().hex

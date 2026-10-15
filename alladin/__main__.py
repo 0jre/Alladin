@@ -20,9 +20,9 @@ def _interrupt(signum,frame):
     raise KeyboardInterrupt()
 
 def main():
-    parser = argparse.ArgumentParser(description='Coinbase SOL-USDC paper backend; external-session reasoning and read-only market data.')
-    parser.add_argument('--config',default='config.json')
-    parser.add_argument('--db',default='data/session.sqlite')
+    parser = argparse.ArgumentParser(description='Coinbase multi-token spot paper backend; external-session reasoning.')
+    parser.add_argument('--config',default='config.portfolio.json')
+    parser.add_argument('--db',default='data/portfolio.sqlite')
     parser.add_argument('--agents',choices=['external','rules'],default='external')
     sub = parser.add_subparsers(dest='command',required=True)
     demo = sub.add_parser('generate-demo'); demo.add_argument('--output',default='data/demo.jsonl'); demo.add_argument('--bars',type=int,default=600)
@@ -37,6 +37,9 @@ def main():
     demo_live.add_argument('--poll-seconds',type=int,default=5);demo_live.add_argument('--output',default='results/demo-live')
     sub.add_parser('mcp')
     sub.add_parser('status'); sub.add_parser('contract')
+    scan=sub.add_parser('scan');scan.add_argument('--limit',type=int,default=5)
+    local=sub.add_parser('execute');local.add_argument('--request',required=True);local.add_argument('--key',required=True)
+    migrate=sub.add_parser('migrate-portfolio');migrate.add_argument('--from-config',required=True)
     sub.add_parser('performance')
     sub.add_parser('doctor')
     policy=sub.add_parser('revise-policy');policy.add_argument('--from-config',required=True)
@@ -52,13 +55,38 @@ def main():
             write_demo(args.output,args.bars)
             result = {'file':args.output,'data':'SYNTHETIC','bars':args.bars}
         elif args.command == 'contract':
-            result = CONTRACT
+            raw=json.loads(Path(args.config).read_text())
+            if raw.get('backend')=='portfolio':
+                from .spot_tools import contract
+                result=contract()
+            else:
+                result = CONTRACT
         elif args.command == 'call':
             d = json.loads(Path(args.request).read_text())
             result = BackendClient(args.url).command(d['command'],d['args'],args.key)
         else:
-            cfg = Config.load(args.config)
+            raw=json.loads(Path(args.config).read_text())
+            portfolio=raw.get('backend')=='portfolio'
+            if portfolio:
+                from .spot_policy import SpotPolicy
+                from .spot_engine import SpotService
+                cfg=SpotPolicy(**raw)
+                if args.agents!='external':
+                    raise ValueError('Portfolio backend requires external-session reasoning')
+                if args.command=='migrate-portfolio':
+                    service=SpotService.migrate(cfg,args.db,Config.load(args.from_config))
+                    print(json.dumps(dict(result='migrated',status=service.status()),indent=2),flush=True)
+                    return 0
+            else:
+                cfg = Config(**raw)
+            if portfolio and args.command in {'validate','replay','demo-live','export','revise-policy'}:
+                raise ValueError('Legacy research command; use an explicit legacy config and database')
             if args.command=='doctor':
+                if portfolio:
+                    from .spot_market import SpotMarket
+                    d=SpotMarket().catalog()
+                    print(json.dumps(dict(execution='paper',catalog_count=d['count'],product_types=d['product_types'])),flush=True)
+                    return 0
                 from .diagnostics import diagnose
                 report=diagnose(cfg)
                 print(json.dumps(report,indent=2,allow_nan=False),flush=True)
@@ -69,7 +97,16 @@ def main():
                 result=validate(cfg,args.feed,args.output,args.folds)
                 print(json.dumps(result,indent=2,ensure_ascii=False,allow_nan=False))
                 return 0
-            service = Service(cfg,args.db,args.agents)
+            service = SpotService(cfg,args.db) if portfolio else Service(cfg,args.db,args.agents)
+            if args.command=='scan':
+                print(json.dumps(service.command('scan_opportunities',{'limit':args.limit},'cli-scan'),indent=2),flush=True)
+                return 0
+            if args.command=='execute':
+                d=json.loads(Path(args.request).read_text())
+                print(json.dumps(service.command(d['command'],d['args'],args.key),indent=2),flush=True)
+                return 0
+            if portfolio and args.command in {'validate','replay','generate-demo','demo-live','export','revise-policy'}:
+                raise ValueError('Legacy replay/demo command; use an explicit legacy config and database')
             if args.command=='revise-policy':
                 print(json.dumps(service.revise_policy(Config.load(args.from_config)),indent=2),flush=True)
                 return 0

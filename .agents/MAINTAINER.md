@@ -6,11 +6,19 @@ Read root [AGENTS.md](../AGENTS.md), [architecture](../docs/architecture.md), an
 guide for the affected contract. Inspect current source and tests; do not infer
 behavior from old verification JSON or comments describing earlier versions.
 
-The runtime is Python standard library only. Do not introduce UI, embedded
+The default runtime includes pinned NautilusTrader through the `engine` extra.
+Keep its process boundary, native risk checks and explicit failure behavior.
+Do not introduce UI, embedded
 inference, RPC, signers, exchange-order adapters, or new live products as an
 incidental improvement. Keep source and maintained documentation in English.
 
 ## Code map
+
+The default backend is now the multi-token spot portfolio path documented in
+[portfolio.md](../docs/portfolio.md). Inspect `spot_engine.py`, `spot_market.py`,
+`spot_policy.py`, `spot_tools.py` and `tests/test_spot_portfolio.py` first. Legacy
+modules remain for old accounts and replay; do not reintroduce their mint binding
+into generic instruments or silently migrate state.
 
 | Area | Files | Representative verification |
 |---|---|---|

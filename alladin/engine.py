@@ -438,6 +438,8 @@ class Service:
     def _load(self,db):
         state = self.store.load(db)
         if state:
+            if state.get('schema')=='coinbase-portfolio-v1':
+                raise ValueError('Account migrated to portfolio backend; use its portfolio policy')
             if state['config_hash'] != self.fingerprint or state['agent_mode'] != self.council.mode:
                 raise ValueError('Configuration or mode differs from the persisted session; use a separate database for new research')
             return self._ensure(state)

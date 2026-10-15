@@ -1,5 +1,8 @@
 # Configuration reference
 
+> Default backend: [multi-token portfolio](portfolio.md). The detailed legacy
+> procedures below apply to explicit legacy accounts unless stated otherwise.
+
 `Config.load(path)` reads JSON; unknown/malformed fields fail validation. Always
 select the intended file explicitly. The values below distinguish the repository
 profile from unchanged legacy class defaults used when a field is omitted.

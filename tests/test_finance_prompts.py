@@ -67,7 +67,7 @@ class PromptLibraryTests(unittest.TestCase):
         self.assertEqual(set(meta['roles']),PromptLibrary.ROLES)
         self.assertEqual(len(meta['bundle_sha256']),64)
         text=library.render('manager','trend')
-        self.assertIn('SOL/USDC spot PAPER',text)
+        self.assertIn('multi-token spot PAPER',text)
         self.assertIn('not win probabilities',text)
         self.assertIn('configured',text)
         self.assertLess(len(text),16000)
@@ -131,7 +131,7 @@ class FinanceCouncilTests(unittest.TestCase):
         p,a,client=self.run_case()
         self.assertEqual(p.action,'LONG',a)
         self.assertTrue(a['risk_recheck']['approved'])
-        self.assertEqual(a['prompt_pack']['version'],'2.1.0')
+        self.assertEqual(a['prompt_pack']['version'],'2.2.0')
         self.assertEqual(len(a['evidence_sha256']),64)
         self.assertEqual(client.calls,5)
 

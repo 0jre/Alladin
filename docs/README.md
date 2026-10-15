@@ -1,13 +1,14 @@
 # Alladin documentation
 
 These guides describe the implemented Python backend for external-agent research,
-Coinbase catalog discovery and legacy SOL-USDC spot paper execution. The
+Coinbase multi-token spot paper execution and legacy account compatibility. The
 [product universe guide](coinbase-universe.md) distinguishes implemented discovery
 from the incomplete multi-product execution migration.
 
 | Task | Read |
 |---|---|
 | Discover all public Coinbase product types and actual capabilities | [Coinbase universe](coinbase-universe.md) |
+| Operate the default multi-token backend | [Portfolio](portfolio.md), [blueprint mapping](blueprint-implementation.md) |
 | Understand the product | [Product](product.md) |
 | Start a service and paper account | [Getting started](getting-started.md) |
 | Connect an external session | [API](api.md), [protocol](external-sessions.md), [consumer instructions](../.agents/CONSUMER.md) |
@@ -23,11 +24,13 @@ from the incomplete multi-product execution migration.
 - `GET /v1/contract` and `python -m alladin contract`: endpoint/command inventory.
 - `prepare_decision`: actual evidence, report schema, plan schema, and role instructions.
 - MCP `tools/list`, `prompts/list`, and `prompts/get`: implemented discovery.
-- `config.json` and `alladin/models.py`: repository profile and class defaults.
+- `config.portfolio.json`, `spot_policy.py` and `spot_tools.py`: default portfolio profile and schemas.
+- `config.json` and `models.py`: legacy profile and class defaults.
 
 Use returned schemas, not prose, to construct executable payloads.
-`external-session-v2`, task `binding_version=2`, prompt bundle `2.1.0`, and package
-version `0.6.0` identify different compatibility surfaces.
+`external-session-v2` / `binding_version=2` describe legacy tasks;
+`coinbase-portfolio-v1` describes the shared portfolio state, prompt bundle `2.2.0`
+and package version `0.7.0` identify separate compatibility surfaces.
 
 ## Evidence and language policy
 
